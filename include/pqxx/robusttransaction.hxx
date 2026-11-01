@@ -4,14 +4,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/robusttransaction instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_ROBUSTTRANSACTION
-#define PQXX_H_ROBUSTTRANSACTION
+#ifndef PQXX_ROBUSTTRANSACTION_HXX
+#define PQXX_ROBUSTTRANSACTION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -21,17 +21,20 @@
 
 namespace pqxx::internal
 {
-/// Helper base class for the @ref robusttransaction class template.
+/// Helper base class for the @ref pqxx::robusttransaction class template.
 class PQXX_LIBEXPORT PQXX_NOVTABLE basic_robusttransaction
         : public dbtransaction
 {
 public:
-  virtual ~basic_robusttransaction() override = 0;
+  basic_robusttransaction(basic_robusttransaction const &) = delete;
+  basic_robusttransaction(basic_robusttransaction &&) = delete;
+  ~basic_robusttransaction() override = 0;
+
+  basic_robusttransaction &operator=(basic_robusttransaction const &) = delete;
+  basic_robusttransaction &operator=(basic_robusttransaction &&) = delete;
 
 protected:
-  basic_robusttransaction(
-    connection &c, zview begin_command, std::string_view tname);
-  basic_robusttransaction(connection &c, zview begin_command);
+  basic_robusttransaction(connection &cx, zview begin_command, sl);
 
 private:
   using IDType = unsigned long;
@@ -40,10 +43,10 @@ private:
   std::string m_xid;
   int m_backendpid = -1;
 
-  void init(zview begin_command);
+  void init(zview begin_command, sl);
 
   // @warning This function will become `final`.
-  virtual void do_commit() override;
+  void do_commit(sl) override;
 };
 } // namespace pqxx::internal
 
@@ -83,34 +86,41 @@ class robusttransaction final : public internal::basic_robusttransaction
 {
 public:
   /** Create robusttransaction of given name.
-   * @param c Connection inside which this robusttransaction should live.
+   * @param cx Connection inside which this robusttransaction should live.
    * @param tname optional human-readable name for this transaction.
    */
-  robusttransaction(connection &c, std::string_view tname) :
+  robusttransaction(connection &cx, std::string_view tname) :
           internal::basic_robusttransaction{
-            c, pqxx::internal::begin_cmd<ISOLATION, write_policy::read_write>,
+            cx, pqxx::internal::begin_cmd<ISOLATION, write_policy::read_write>,
             tname}
   {}
 
   /** Create robusttransaction of given name.
-   * @param c Connection inside which this robusttransaction should live.
+   * @param cx Connection inside which this robusttransaction should live.
    * @param tname optional human-readable name for this transaction.
    */
-  robusttransaction(connection &c, std::string &&tname) :
+  robusttransaction(connection &cx, std::string &&tname) :
           internal::basic_robusttransaction{
-            c, pqxx::internal::begin_cmd<ISOLATION, write_policy::read_write>,
+            cx, pqxx::internal::begin_cmd<ISOLATION, write_policy::read_write>,
             std::move(tname)}
   {}
 
   /** Create robusttransaction of given name.
-   * @param c Connection inside which this robusttransaction should live.
+   * @param cx Connection inside which this robusttransaction should live.
    */
-  explicit robusttransaction(connection &c) :
+  explicit robusttransaction(connection &cx, sl loc = sl::current()) :
           internal::basic_robusttransaction{
-            c, pqxx::internal::begin_cmd<ISOLATION, write_policy::read_write>}
+            cx, pqxx::internal::begin_cmd<ISOLATION, write_policy::read_write>,
+            loc}
   {}
 
-  virtual ~robusttransaction() noexcept override { close(); }
+  robusttransaction(robusttransaction const &) = delete;
+  robusttransaction(robusttransaction &&) = delete;
+
+  ~robusttransaction() noexcept override { close(sl::current()); }
+
+  robusttransaction &operator=(robusttransaction const &) = delete;
+  robusttransaction &operator=(robusttransaction &&) = delete;
 };
 
 /**

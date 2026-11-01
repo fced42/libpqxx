@@ -4,14 +4,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/nontransaction instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_NONTRANSACTION
-#define PQXX_H_NONTRANSACTION
+#ifndef PQXX_NONTRANSACTION_HXX
+#define PQXX_NONTRANSACTION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -47,7 +47,12 @@ using namespace std::literals;
  * time out, e.g. when the network is unavailable for a very long time).
  *
  * Any query executed in a nontransaction is committed immediately, and neither
- * commit() nor abort() has any effect.
+ * commit() nor abort() has any effect as far as the database is concerned.
+ * Just like other transaction types, however, the nontransaction remains
+ * attached to the @ref pqxx::connection until you commit, abort, or destroy
+ * it.  Just like a regular transaction, it is a @ref transaction_focus, of
+ * which no more than one can be active for any given connection at any given
+ * time.
  *
  * Database features that require a backend transaction, such as cursors or
  * large objects, will not work in a nontransaction.
@@ -57,20 +62,27 @@ class PQXX_LIBEXPORT nontransaction final : public transaction_base
 public:
   /// Constructor.
   /** Create a "dummy" transaction.
-   * @param c Connection in which this "transaction" will operate.
+   * @param cx Connection in which this "transaction" will operate.
    * @param tname Optional tname for the transaction, beginning with a letter
    * and containing only letters and digits.
    */
-  nontransaction(connection &c, std::string_view tname = ""sv) :
-          transaction_base{c, tname, std::shared_ptr<std::string>{}}
+  explicit nontransaction(
+    connection &cx, std::string_view tname = ""sv, sl loc = sl::current()) :
+          transaction_base{cx, tname, std::shared_ptr<std::string>{}, loc}
   {
     register_transaction();
   }
 
-  virtual ~nontransaction() override { close(); }
+  nontransaction() = delete;
+  nontransaction(nontransaction const &) = delete;
+  nontransaction(nontransaction &&) = delete;
+  ~nontransaction() override { close(sl::current()); }
+
+  nontransaction &operator=(nontransaction const &) = delete;
+  nontransaction &operator=(nontransaction &&) = delete;
 
 private:
-  virtual void do_commit() override {}
+  void do_commit(sl) override {}
 };
 } // namespace pqxx
 #endif

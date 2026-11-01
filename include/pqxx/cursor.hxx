@@ -4,14 +4,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/cursor instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_CURSOR
-#define PQXX_H_CURSOR
+#ifndef PQXX_CURSOR_HXX
+#define PQXX_CURSOR_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -94,19 +94,29 @@ public:
 
   cursor_base() = delete;
   cursor_base(cursor_base const &) = delete;
+  cursor_base(cursor_base &&) = delete;
+
+  // Really weird: gcc complains that this accesses deprecated m_name.
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
+  ~cursor_base() = default;
+#include "pqxx/internal/ignore-deprecated-post.hxx"
+
   cursor_base &operator=(cursor_base const &) = delete;
+  cursor_base &operator=(cursor_base &&) = delete;
 
   /**
    * @name Special movement distances.
    */
   //@{
 
-  // TODO: Make constexpr inline (but breaks ABI).
   /// Special value: read until end.
   /** @return Maximum value for result::difference_type, so the cursor will
    * attempt to read the largest possible result set.
    */
-  [[nodiscard]] static difference_type all() noexcept;
+  [[nodiscard]] static constexpr difference_type all() noexcept
+  {
+    return (std::numeric_limits<int>::max)() - 1;
+  }
 
   /// Special value: read one row only.
   /** @return Unsurprisingly, 1.
@@ -121,11 +131,13 @@ public:
     return -1;
   }
 
-  // TODO: Make constexpr inline (but breaks ABI).
   /// Special value: read backwards from current position back to origin.
   /** @return Minimum value for result::difference_type.
    */
-  [[nodiscard]] static difference_type backward_all() noexcept;
+  [[nodiscard]] static constexpr difference_type backward_all() noexcept
+  {
+    return (std::numeric_limits<int>::min)() + 1;
+  }
 
   //@}
 
@@ -137,13 +149,41 @@ public:
    */
   [[nodiscard]] constexpr std::string const &name() const noexcept
   {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
     return m_name;
+#include "pqxx/internal/ignore-deprecated-post.hxx"
   }
 
 protected:
-  cursor_base(connection &, std::string_view Name, bool embellish_name = true);
+  cursor_base(
+    connection &, std::string_view Name, bool embellish_name = true,
+    sl loc = sl::current());
 
-  std::string const m_name;
+  /// The `std::source_location` for where this cursor was created.
+  [[nodiscard]] sl created_loc() const
+  {
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
+    return m_created_loc;
+#include "pqxx/internal/ignore-deprecated-post.hxx"
+  }
+
+  // NOLINTBEGIN(
+  //    cppcoreguidelines-non-private-member-variables-in-classes,
+  //    misc-non-private-member-variables-in-classes
+  // )
+
+  [[deprecated(
+    "This will become private.  Use name() instead.")]] std::string const
+    m_name;
+
+  /// The `std::source_location` for where this cursor was created.
+  [[deprecated("This will become private.  Use created_loc() instead.")]] sl
+    m_created_loc;
+
+  // NOLINTEND(
+  //    cppcoreguidelines-non-private-member-variables-in-classes,
+  //    misc-non-private-member-variables-in-classes
+  // )
 };
 } // namespace pqxx
 
@@ -161,7 +201,7 @@ namespace pqxx
  * you want.  See the retrieve() member function.
  */
 template<cursor_base::update_policy up, cursor_base::ownership_policy op>
-class stateless_cursor
+class stateless_cursor final
 {
 public:
   using size_type = result_size_type;
@@ -178,8 +218,9 @@ public:
    */
   stateless_cursor(
     transaction_base &tx, std::string_view query, std::string_view cname,
-    bool hold) :
-          m_cur{tx, query, cname, cursor_base::random_access, up, op, hold}
+    bool hold, sl loc = sl::current()) :
+          m_cur{tx, query, cname, cursor_base::random_access,
+                up, op,    hold,  loc}
   {}
 
   /// Adopt an existing scrolling SQL cursor.
@@ -189,12 +230,21 @@ public:
    * @param tx The transaction within which you want to manage the cursor.
    * @param adopted_cursor Your cursor's SQL name.
    */
-  stateless_cursor(transaction_base &tx, std::string_view adopted_cursor) :
+  stateless_cursor(
+    transaction_base &tx, std::string_view adopted_cursor,
+    sl loc = sl::current()) :
           m_cur{tx, adopted_cursor, op}
   {
     // Put cursor in known position
-    m_cur.move(cursor_base::backward_all());
+    m_cur.move(cursor_base::backward_all(), loc);
   }
+
+  stateless_cursor(stateless_cursor &&) = default;
+  stateless_cursor(stateless_cursor const &) = delete;
+  ~stateless_cursor() = default;
+
+  stateless_cursor &operator=(stateless_cursor &&) = default;
+  stateless_cursor &operator=(stateless_cursor const &) = delete;
 
   /// Close this cursor.
   /** The destructor will do this for you automatically.
@@ -202,15 +252,15 @@ public:
    * Closing a cursor is idempotent.  Closing a cursor that's already closed
    * does nothing.
    */
-  void close() noexcept { m_cur.close(); }
+  void close(sl loc = sl::current()) { m_cur.close(loc); }
 
   /// Number of rows in cursor's result set
   /** @note This function is not const; it may need to scroll to find the size
    * of the result set.
    */
-  [[nodiscard]] size_type size()
+  [[nodiscard]] size_type size(sl loc = sl::current())
   {
-    return internal::obtain_stateless_cursor_size(m_cur);
+    return internal::obtain_stateless_cursor_size(m_cur, loc);
   }
 
   /// Retrieve rows from begin_pos (inclusive) to end_pos (exclusive)
@@ -225,10 +275,11 @@ public:
    * arbitrarily inside or outside the result set; only existing rows are
    * included in the result.
    */
-  result retrieve(difference_type begin_pos, difference_type end_pos)
+  result retrieve(
+    difference_type begin_pos, difference_type end_pos, sl loc = sl::current())
   {
     return internal::stateless_cursor_retrieve(
-      m_cur, result::difference_type(size()), begin_pos, end_pos);
+      m_cur, result::difference_type(size()), begin_pos, end_pos, loc);
   }
 
   /// Return this cursor's name.
@@ -271,7 +322,7 @@ namespace pqxx
  * This class can create or adopt cursors that live outside any backend
  * transaction, which your backend version may not support.
  */
-class PQXX_LIBEXPORT icursorstream
+class PQXX_LIBEXPORT icursorstream final
 {
 public:
   using size_type = cursor_base::size_type;
@@ -291,7 +342,8 @@ public:
    */
   icursorstream(
     transaction_base &context, std::string_view query,
-    std::string_view basename, difference_type sstride = 1);
+    std::string_view basename, difference_type sstride = 1,
+    sl = sl::current());
 
   /// Adopt existing SQL cursor.  Use with care.
   /** Forms a cursor stream around an existing SQL cursor, as returned by e.g.
@@ -320,10 +372,14 @@ public:
    */
   icursorstream(
     transaction_base &context, field const &cname, difference_type sstride = 1,
-    cursor_base::ownership_policy op = cursor_base::owned);
+    cursor_base::ownership_policy op = cursor_base::owned, sl = sl::current());
+
+  // NOLINTBEGIN(google-explicit-constructor,hicpp-explicit-conversions)
 
   /// Return `true` if this stream may still return more data.
-  constexpr operator bool() const &noexcept { return not m_done; }
+  constexpr operator bool() const & noexcept { return not m_done; }
+
+  // NOLINTEND(google-explicit-constructor,hicpp-explicit-conversions)
 
   /// Read new value into given result object; same as operator `>>`.
   /** The result set may continue any number of rows from zero to the chosen
@@ -334,9 +390,9 @@ public:
    * @return Reference to this very stream, to facilitate "chained" invocations
    * ("C.get(r1).get(r2);")
    */
-  icursorstream &get(result &res)
+  icursorstream &get(result &res, sl loc = sl::current())
   {
-    res = fetchblock();
+    res = fetchblock(loc);
     return *this;
   }
   /// Read new value into given result object; same as `get(result&)`.
@@ -357,36 +413,42 @@ public:
    * @return Reference to this stream itself, to facilitate "chained"
    * invocations.
    */
-  icursorstream &ignore(std::streamsize n = 1) &;
+  icursorstream &ignore(std::streamsize n = 1, sl = sl::current()) &;
 
   /// Change stride, i.e. the number of rows to fetch per read operation.
   /**
    * @param stride Must be a positive number.
    */
-  void set_stride(difference_type stride) &;
+  void set_stride(difference_type stride, sl = sl::current()) &;
   [[nodiscard]] constexpr difference_type stride() const noexcept
   {
     return m_stride;
   }
 
+  /// The ``std::source_location` for where this stream was created.
+  [[nodiscard]] PQXX_PURE sl created_loc() const noexcept
+  {
+    return m_cur.created_loc();
+  }
+
 private:
-  result fetchblock();
+  result fetchblock(sl);
 
   friend class internal::gate::icursorstream_icursor_iterator;
   size_type forward(size_type n = 1);
   void insert_iterator(icursor_iterator *) noexcept;
   void remove_iterator(icursor_iterator *) const noexcept;
 
-  void service_iterators(difference_type);
+  void service_iterators(difference_type, sl);
 
   internal::sql_cursor m_cur;
+
+  mutable icursor_iterator *m_iterators = nullptr;
 
   difference_type m_stride;
   difference_type m_realpos, m_reqpos;
 
-  mutable icursor_iterator *m_iterators;
-
-  bool m_done;
+  bool m_done = false;
 };
 
 
@@ -417,7 +479,7 @@ private:
  * stream is <em>not thread-safe</em>.  Creating a new iterator, copying one,
  * or destroying one affects the stream as a whole.
  */
-class PQXX_LIBEXPORT icursor_iterator
+class PQXX_LIBEXPORT icursor_iterator final
 {
 public:
   using iterator_category = std::input_iterator_tag;
@@ -431,25 +493,28 @@ public:
   icursor_iterator() noexcept;
   explicit icursor_iterator(istream_type &) noexcept;
   icursor_iterator(icursor_iterator const &) noexcept;
+  icursor_iterator(icursor_iterator &&) = delete;
   ~icursor_iterator() noexcept;
+
+  icursor_iterator &operator=(icursor_iterator &&) = delete;
 
   result const &operator*() const
   {
-    refresh();
+    refresh(created_loc());
     return m_here;
   }
-  result const *operator->() const
+  PQXX_RETURNS_NONNULL result const *operator->() const
   {
-    refresh();
+    refresh(created_loc());
     return &m_here;
   }
   icursor_iterator &operator++();
-  icursor_iterator operator++(int);
+  icursor_iterator operator++(int) &;
   icursor_iterator &operator+=(difference_type);
   icursor_iterator &operator=(icursor_iterator const &) noexcept;
 
   [[nodiscard]] bool operator==(icursor_iterator const &rhs) const;
-  [[nodiscard]] bool operator!=(icursor_iterator const &rhs) const noexcept
+  [[nodiscard]] bool operator!=(icursor_iterator const &rhs) const
   {
     return not operator==(rhs);
   }
@@ -468,15 +533,45 @@ public:
   }
 
 private:
-  void refresh() const;
+  void refresh(sl) const;
 
   friend class internal::gate::icursor_iterator_icursorstream;
-  difference_type pos() const noexcept { return m_pos; }
+  [[nodiscard]] difference_type pos() const noexcept { return m_pos; }
   void fill(result const &);
+
+  /// The `std::source_location` for where this iterator's stream was created.
+  /** We don't keep the information for the iterator itself, since iterators
+   * are meant to be lightweight.  They are often passed as arguments, where
+   * space is especially limited.
+   *
+   * If there is no stream, returns the immediate call site.
+   */
+  [[nodiscard]] PQXX_PURE sl created_loc(sl loc = sl::current()) const noexcept
+  {
+    return (m_stream == nullptr) ? loc : m_stream->created_loc();
+  }
+
+  /** This is for use in assignment and comparison operators, where we have
+   * two `icursor_iterator` objects but the caller can't pass a
+   * `std::source_location` that might be useful to the application maintainer.
+   *
+   * Returns the first one available of: the creation location for this
+   * iterator's stream, the creation location of the `other` iterator's
+   * stream, or the immediate call site.
+   */
+  [[nodiscard]] sl
+  best_location(icursor_iterator const &other, sl loc = sl::current()) const
+  {
+    if (m_stream != nullptr)
+      return created_loc();
+    else
+      return other.created_loc(loc);
+  }
 
   icursorstream *m_stream{nullptr};
   result m_here;
   difference_type m_pos;
+
   icursor_iterator *m_prev{nullptr}, *m_next{nullptr};
 };
 } // namespace pqxx

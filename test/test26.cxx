@@ -1,13 +1,10 @@
-#include <iostream>
 #include <map>
 
 #include <pqxx/nontransaction>
 #include <pqxx/transaction>
 #include <pqxx/transactor>
 
-#include "test_helpers.hxx"
-
-using namespace pqxx;
+#include "helpers.hxx"
 
 
 // Example program for libpqxx.  Modify the database, retaining transactional
@@ -15,27 +12,27 @@ using namespace pqxx;
 namespace
 {
 // Convert year to 4-digit format.
-int To4Digits(int Y)
+int to_4_digits(int y)
 {
-  int Result{Y};
+  int Result{y};
 
-  PQXX_CHECK(Y >= 0, "Negative year: " + to_string(Y));
+  PQXX_CHECK_GREATER_EQUAL(y, 0);
 
-  if (Y < 70)
+  if (y < 70)
     Result += 2000;
-  else if (Y < 100)
+  else if (y < 100)
     Result += 1900;
   else
-    PQXX_CHECK(Y >= 1970, "Unexpected year: " + to_string(Y));
+    PQXX_CHECK_GREATER_EQUAL(y, 1970);
   return Result;
 }
 
 
 // Transaction definition for year-field update.  Returns conversions done.
-std::map<int, int> update_years(connection &C)
+std::map<int, int> update_years(pqxx::connection &cx)
 {
   std::map<int, int> conversions;
-  work tx{C};
+  pqxx::work tx{cx};
 
   // Note all different years currently occurring in the table, writing them
   // and their correct mappings to m_conversions
@@ -44,20 +41,21 @@ std::map<int, int> update_years(connection &C)
   {
     // Read year, and if it is non-null, note its converted value
     if (bool(y))
-      conversions[y.value()] = To4Digits(y.value());
+      conversions[y.value_or(1)] = to_4_digits(y.value_or(2));
   }
 
-  // For each occurring year, write converted date back to whereever it may
+  // For each occurring year, write converted date back to wherever it may
   // occur in the table.  Since we're in a transaction, any changes made by
   // others at the same time will not affect us.
   for (auto const &c : conversions)
-    tx.exec0(
-      "UPDATE pqxxevents "
-      "SET year=" +
-      to_string(c.second) +
-      " "
-      "WHERE year=" +
-      to_string(c.first));
+    tx.exec(
+        "UPDATE pqxxevents "
+        "SET year=" +
+        pqxx::to_string(c.second) +
+        " "
+        "WHERE year=" +
+        pqxx::to_string(c.first))
+      .no_rows();
 
   tx.commit();
 
@@ -65,20 +63,20 @@ std::map<int, int> update_years(connection &C)
 }
 
 
-void test_026()
+void test_026(pqxx::test::context &)
 {
-  connection conn;
+  pqxx::connection cx;
   {
-    nontransaction tx{conn};
-    test::create_pqxxevents(tx);
+    pqxx::nontransaction tx{cx};
+    pqxx::test::create_pqxxevents(tx);
     tx.commit();
   }
 
   // Perform (an instantiation of) the UpdateYears transactor we've defined
   // in the code above.  This is where the work gets done.
-  auto const conversions{perform([&conn] { return update_years(conn); })};
+  auto const conversions{pqxx::perform([&cx] { return update_years(cx); })};
 
-  PQXX_CHECK(not std::empty(conversions), "No conversions done!");
+  PQXX_CHECK(not std::empty(conversions));
 }
 
 

@@ -1,12 +1,18 @@
+#ifndef PQXX_INTERNAL_GATES_ICURSORSTREAM_ICURSOR_ITERATOR_HXX
+#define PQXX_INTERNAL_GATES_ICURSORSTREAM_ICURSOR_ITERATOR_HXX
+
 #include <pqxx/internal/callgate.hxx>
 
 namespace pqxx::internal::gate
 {
-class PQXX_PRIVATE icursorstream_icursor_iterator : callgate<icursorstream>
+class PQXX_PRIVATE icursorstream_icursor_iterator final
+        : callgate<icursorstream>
 {
   friend class pqxx::icursor_iterator;
 
-  icursorstream_icursor_iterator(reference x) : super(x) {}
+  explicit constexpr icursorstream_icursor_iterator(reference x) noexcept :
+          super(x)
+  {}
 
   void insert_iterator(icursor_iterator *i) noexcept
   {
@@ -24,9 +30,10 @@ class PQXX_PRIVATE icursorstream_icursor_iterator : callgate<icursorstream>
     return home().forward(n);
   }
 
-  void service_iterators(icursorstream::difference_type p)
+  void service_iterators(icursorstream::difference_type p, sl loc)
   {
-    home().service_iterators(p);
+    home().service_iterators(p, loc);
   }
 };
 } // namespace pqxx::internal::gate
+#endif

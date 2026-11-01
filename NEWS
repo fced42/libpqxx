@@ -1,4 +1,249 @@
+8.1.0
+ - Fix clashing `std::string_view` linker symbols in MSVC. (#1263)
+ - No longer accept empty string as a boolean "false".
+ - No longer accept "TRUE", "FALSE", "T", "F" as booleans.
+ - Fix attribute ordering for Windows clang build. (#1252)
+ - `pqxx::array` now supports default construction and move. (#1245)
+ - Fix `params` for smart pointer or `optional` holding binary data. (#1250)
+ - New traits type `maybe_traits` & concept `maybe_type`. (#1254)
+ - Use `PQsocketPoll()` if present; should fix MinGW `<thread>` problem.
+ - Escape extra `SHIFT_JIS_2004` backslash character where needed.
+ - Forgo UHC encoding optimisation: input could be malformed.
+ - Auto-quote table name in one more case.
+ - _Finally_ make `transaction_base::do_abort()` nonvirtual.
+ - Documented: "exec" functions can handle compound statements.
+ - Disallow views in arrays & composites, even when hidden in a `maybe_type`.
+ - Concept `not_at_all_borrowed`, a stronger guarantee than `not_borrowed`.
+ - Optimise `params` against excessive `reserve()` calls.
+ - Fix budgeting for composites: could fail unnecessarily.
+ - Catch negative index (i.e. column number) in `row::at()`.
+ - Handle special rules for `SQL_ASCII` server encoding.
+ - New `encoding_group::shift_jis_2004`, separate from `sjis`.
+ - Drop archlinux CI testing: Docker images seem to be completely broken now.
+ - Tighten up & document behaviour of overwriting notification handlers.
+ - `esc_like()` is broken.  Use `esc_like<...>()` instead.
+ - Some `icursor_iterator` operators are no longer `noexcept`.
+ - Transactions' `unesc_bin()` functions are now `const`.
+ - Reading `bytea` fields from a `result` is faster.
+ - String conversion for `field`/`field_ref`: can now pass one as a parameter.
+8.0.2
+ - Simple benchmark tool for query performance.
+ - Fix an apparent `memcpy()` overlap.
+ - Rename `config-compiler.h` to just `internal/config.h`. (#1211)
+ - Fix detection of supported compiler flags.
+ - Fix `bool` conversion to string. (#1229)
+ - Fix under-budgeting for arrays. (#1235)
+ - Fix check for passing `conversion_context` to `params` constructor. (#1237)
+ - Binary data with null pointer is now an empty blob, not a null. (#1242)
+ - Redesign retry conditions for transactor `perform()`. (#1248)
+8.0.1
+ - A lot more constructors are now `explicit`.
+ - Update GNU attributes to use standard `[[attribute]]` syntax. (#1199)
+ - Fix mistake in check for GNU "pure" attribute.
+ - Fix potential 1-byte buffer overrun in `stream_to`. (#1203)
+8.0.0
+ - C++20 is now the oldest C++ version that libpqxx supports.
+ - Requires PostgreSQL 11 or better.
+ - **Exception class hierarchy has changed.**  See `UPGRADING.md`.
+ - **Result/row iterators have changed.**  Instead of `i[n]` do `(*i)[n]`.
+ - **Result equality now only compares identity, not the data inside.**
+ - **Row/field equality now only compares identity, not the data inside.**
+ - **Row/field lifetimes have changed: see `row_ref` and `field_ref`.**
+ - **`pqxx::bytes` is now a vector of bytes, not a string of bytes.** (#924)
+ - All libpqxx exceptions are now derived from `pqxx::failure`.
+ - Libpqxx exceptions now have a C++26 `std::stacktrace`, if available.
+ - Use `pqxx::bytes::data()` instead of `pqxx::bytes::c_str()`.
+ - The string conversion API has changed! (Old API should still work). (#948)
+ - "String conversion" to `std::string_view` etc. is now supported. (#694)
+ - Simpler to use: `pqxx::from_string()`, `pqxx::to_buf()`, `pqxx::into_buf()`.
+ - `to_buf()` and `into_buf()` functions will no longer zero-terminate.
+ - **Beware lifetime** when "converting" a string to `std::string_view`!
+ - Binary data can be any `std::contiguous_range` of `std::byte`. (#925)
+ - Generic `quote()` takes `always_null` into account.
+ - You can now convert strings to `pqxx::array` types.
+ - You can now parse SQL arrays straight into `std::vector` and such.
+ - There are fewer raw pointers in the API, for safety & verifiability.
+ - The libpqxx exceptions now have a `std::source_location`. (#923)
+ - Result & row iterators are now proper random access iterators.
+ - More getters are now `noexcept`.
+ - Retired `binarystring` and its headers.  Use `blob` instead.
+ - Retired `connection_base` type alias.  Use `connection`.
+ - Retired `pqxx::encrypt_password()`.  Use the ones in `pqxx::connection`.
+ - Retired `pqxx::prepare::dynamic_params`.  Use `pqxx::params`.
+ - Retired deprecated `stream_to` constructors.  Use factory functions.
+ - Retired `transaction_base::unesc_raw()`.  Use `unesc_bin()`.
+ - Retired `transaction_base::quote_raw()`.  Use `quote()` with `bytes_view`.
+ - Deprecated `field` constructors are no longer publicly accessible.
+ - Assume compiler supports concepts.
+ - Assume compiler supports integral conversions in `charconv`.
+ - Assume compiler supports spans, ranges, and `cmp_less` etc.
+ - Retired result row slicing.
+ - Assume compiler supports `std::remove_cvref_t` etc.
+ - Assume compiler supports `[[likely]]` & `[[unlikely]]`.
+ - Assume compiler supports `ssize()`.
+ - Assume compiler supports `std::source_location`.
+ - Assume compiler supports ISO-646 without needing `<ciso646>` header.
+ - Feel free to use `pqxx::encoding_group`.  It's no longer "internal."
+ - There's now an `unknown` encoding group.  It's the only fully safe default.
+ - Dropping JOHAB encoding.  Never fully worked on the server anyway.
+ - Array parsing will refuse to work if the encoding group is `UNKNOWN`.
+ - You can now combine connection string & option pairs on connections! (#1133)
+ - Encodings support code got smaller, simpler, more efficient.
+ - Tests are now in a single directory (#934)
+ - Added an "examples" directory: tested, maintained sample code.
+ - `check_cast()` supports infinities and NaNs.
+ - Now supporting CMake "unity builds."
+ - Stop trying to figure out link options for filesystem library.
+ - You can now set `PQXX_LINT=skip` to skip lint checks during test build.
+ - Header/binary version compatibility check now tolerates patch upgrades.
+ - New helper functions to query a type's nullness properties.
+ - More SQL statements can now be `std::string_view` instead of `pqxx::zview`.
+ - Work around broken multidim `operator[]` support in MSVC 2022.
+ - Build fix for MSVC 2026. (#1160)
+ - Nicer replacement for `pqxx::connection::port()`: `port_number()`.
+ - `pqxx::out_of_memory` is now `pqxx::server_out_of_memory` for clarity.
+ - `pqxx::protocol_violation` is now an `sql_error`, not a `broken_connection`.
+ - Use C++26 reflection, if available, for finding types' names.
+ - Export `source_loc()` function: render a `std::source_location` into text.
+ - Allow tests to run even on ASCII-only databases.
+ - `composite_into_buf()` now returns a `zview`.
+ - Optionally pass `encoding_group` (or connection/transaction) into `params`.
+ - `pqxx::zview` no longer accepts null pointer.
+ - `pqxx::zview` is now `final`.
+ - Replace all generated config headers with just `config-compiler.h`. (#1152)
+ - CMake build now filters `config-compiler.h`, like the autotools build does.
+ - For `stream()`, a type must be convertible and move-constructible. (#1168)
+ - Build defaults to C++20 minimum.
+ - Deprecated `extract_version.sh`; use `extract_version.py`.
+ - Retired tools: `rmlo`, `pqxxthreadsafety`, `test_all.py`.
+ - Shell scripts now have "`.sh`" suffix.  Saves hand-coding names.
+7.10.5
+ - Fix missing types in Doxygen docs (by downgrading Doxygen :-/ ).
+ - Tweak `README.md`. (#1111)
+ - Skip YAML lint checks; it's all fixed up in the 8.0 release branch.
+7.10.4
+ - Logic for controlling non-blocking mode was inverted (non-Windows). (#1057)
+ - Pass SQL error code when throwing `pqxx::insufficient_privilege`. (#1077)
+ - Deprecated the unnamed prepared statement.
+7.10.3
+ - Fix Microsoft Visual Studio C++17 build. (#1036, #1037)
+ - Run Appveyor & CircleCI tests against multiple C++ versions at once.
+7.10.2
+ - CMake: Drop unneeded, broken `PostgreSQL_INCLUDE_DIRS` definition. (#981)
+ - Handle spaces and single quotes in `connection::connection_string()` (#992)
+ - _I said,_ can't pass parameters to streaming query.  Remove support. (#997)
+ - Fix pkgconfig for static linkage; use config module `libpq`. (#999)
+ - Made `row::as_tuple()` public. (#1003)
+ - Avoid garbage at end of demangled names. (#1007)
+ - Fix build when `std::free` is not `noexcept`, such as Mac. (#1010)
+ - Document: generally `pqxx::type_name` should be a `std::string_view`. (#1009)
+ - Fix float-to-text conversion workaround when `charconv` is missing.
+ - Fix `result::affected_rows()` for empty results. (#1018)
+ - Fix error message in `result::expect_columns()`. (#1020)
+ - Fix for compilers that support concepts but not ranges. (#1017)
+ - Avoid deprecation warning for `<ciso646>`. (#1023)
+7.10.1
+ - Fix string conversion buffer budget for arrays containing nulls. (#921)
+ - Remove `-fanalyzer` option again; gcc is still broken.
+ - Oops, no, minimum CMake version is not 3.28, but 3.12!
+ - Fix warnings on compilers that accept `[[assume]]` with a warning. (#928)
+ - Can't pass parameters to streaming query.
+ - CMake build: take libpq path from build target, not absolute path. (#964)
+ - Added explanation to `listen()` of when notifications come in. (#963)
+7.10.0
+ - Deprecate `errorhandler`; replace with lambda-friendly "notice handlers."
+ - Deprecate `notification_receiver`; replace with "notification handlers"
+ - Bump minimum CMake version to 3.12. (#851, #874)
+ - Fixed error message on clashing transaction focuses. (#879)
+ - Don't call`/bin/true`; macOS doesn't have it.  Just call `true`. (#885)
+ - Deprecate `exec_prepared()`; just use `exec()` with a `pqxx::prepped`.
+ - Deprecate `exec1()` etc.  Use `result::expect_rows()` etc.
+ - Fix error-reporting crash in non-blocking connection constructor. (#894)
+ - Fix buffer overrun when converting array containing nulls to string. (#906)
+ - Fix nullness check for `std::optional` containing a nullable value. (#907)
+ - `connection::process_notice()` no longer appends newline if missing.
+7.9.2
+ - Fix CMake documentation install. (#848)
+ - More CMake build fix. (#869)
+ - Bump gcc/clang/postgres minimum version requirements.
+ - Another fix to the readthedocs documentation build. (#845)
+ - Remove obsolete CMake workaround kludges. (#851, #866, #867)
+ - Remove obscure deprecated `stream_to` constructor that never worked. (#853)
+ - Support reading a field as an SQL array using `as_sql_array()`. (#841)
+ - Make row iterator a _proper_ `random_access_iterator`. (#846)
+ - Downgrade result iterator to "bidirectional"; was never really RA. (#846)
+7.9.1
+ - Fix bad conversion of array of empty strings to string. (#816)
+ - Move `[[likely]]` feature check back to compile time, to speed up configure.
+ - Support `[[assume(...)]]`.
+ - Fix `throw_null_conversion` compile error when converting enums. (#807)
+ - Fix memory leak when failing to connect.
+ - Improve introductory docs for connections and transactions.
+ - Re-do entire documentation build.  No more Sphinx in readthedocs. (#802)
+ - No more autodetection of doxygen etc.  Run it, or don't.
+ - Docs build now disabled by default; use `--enable-documentation` to change.
+7.9.0
+ - Support standard libraries without `std::basic_string<std::byte>` etc.
+ - `std::basic_string<std::byte` becomes `pqxx::bytes`. (#726)
+ - `std::basic_string_view<std::byte>` becomes `bytes_view`. (#726)
+ - Fix assertion failure when streaming row ending in empty string. (#774)
+ - CMake users can `shared_link_libraries(... libpqxx::pqxx)`. (#784)
+ - Support parameterised versions of `query()` etc. (#646)
+ - Put all feature tests back in config header. (#732)
+ - Automate integration of feature tests into both CMake & autoconf. (#747)
+ - Streaming query result implements `std::input_iterator`. (#771)
+ - Fix broken `to_buf()` on `zview`. (#728)
+ - Support `PQfsize()` and `PQfmod()`. (#727)
+ - Implement conversion from `string_view` to string. (#728)
+ - Rename `splitconfig` to `splitconfig.py`. (#763)
+ - Document need for conversions more clearly, link to docs. (#757)
+ - Experimental support for converting `std::span` to SQL arrays. (#769)
+7.8.1
+ - Regenerate build files. Should fix ARM Mac build. (#715)
+ - Reinstate `<ciso646>` that MSVC can't live with or without. (#713)
+7.8.0
+ - Streaming large data sets now benchmarks faster than similar C/libpq code!
+ - New `array` class for easier parsing of SQL arrays.
+ - Deprecating `stream_from`.  Use `transaction_base::stream()`.
+ - Use `array_parser` only on comma-separated types, i.e. most of them. (#590)
+ - Bumping requirements versions: need postgres 10.
+ - Fix `array_parser` bug when parsing semicolon in an unquoted string.
+ - Make some `zview` constructors `noexcept` if `string_view` does it.
+ - Handle result status code for starting streaming replication.  (#631)
+ - Faster text decoding and escaping in data streaming.  (#601)
+ - Deprecate `basic_fieldstream` and `fieldstream`.
+ - Deprecate `<<` operator inserting a field into an `ostream`.
+ - New string conversion fields: `converts_to_string` & `converts_from_string`.
+ - Ran `autoupdate` (because the autotools told me to).
+ - Documentation tweak. (#584)
+ - Typo in README.md. (#586)
+ - Support `std::optional<std::string_view>` etc. in `stream_to`. (#596)
+ - Remove support for single-quoted array/composite elements.  No such thing!
+ - Optimise out a kink in composite field parser.
+ - Work around build warning in MinGW: include `winsock2.h` before `windows.h`.
+ - Drop some redundant encoding groups.
+ - If CMake can't find libpq, fall back to pkg-config. (#664)
+ - Work around spurious compile error on g++ pre-gcc-10. (#665)
+ - Include `<pqxx/range>` and `<pqxx/time>` headers in `<pqxx/pqxx>`. (#667)
+ - Don't use `std::function` as deleter for smart pointers.
+ - Work around gcc compile error with regex + address sanitizer + analyzers.
+ - Fix "double free" on exit when built as shared library on Debian. (#681)
+ - Stop including `<ciso646>`; should be built into compilers. (#680)
+ - New `broken_connection` exception subclass: `protocol_violation`. (#686)
+ - Retired unused `blob_already_exists` exception class. (#686)
+ - Support for `PQinitOpenSSL()`. (#678)
+ - Slightly more helpful error for unsupported conversions. (#695)
+ - Replace some C++ feature tests with C++20 feature macros.
+ - Support moving of `stream_to`. (#706)
+ - Incorporate `source_location` in exceptions.
 7.7.4
+ - `transaction_base::for_each()` is now called `for_stream()`. (#580)
+ - New `transaction_base::for_query()` is similar, but non-streaming. (#580)
+ - Query data and iterate directly as client-side types: `query()`. (#580)
+ - New ways to query a single row!  `query01()` and `query1()`. (#580)
+ - We now have 3 kinds of execution: "exec", "query", and "stream" functions.
+ - Use C++23 `std::unreachable()` where available.
+ - `result::iter()` return value now keeps its `result` alive.
 7.7.3
  - Fix up more damage done by auto-formatting.
  - New `result::for_each()`: simple iteration and conversion of rows.  (#528)
@@ -15,7 +260,7 @@
 7.7.1
  - When you build libpqxx, configure the compiler's C++ version yourself!
  - Finally fix a long-standing silly warning in autogen.
- - Fix `digit_to_number` not being found on some comilers.  (#518, #519)
+ - Fix `digit_to_number` not being found on some compilers.  (#518, #519)
  - In audit mode, define `_FORTIFY_SOURCE` to enable some extra checks.
  - Make more functions `constexpr`.  Nothing particularly useful though.
  - Make more functions `noexcept`.
@@ -136,7 +381,7 @@
  - Removed `transaction_base::classname()`.  Did anyone ever use it?
  - Internal reorg of the `transaction` and `transactionfocus` hierarchies.
  - Removed the only case of virtual inheritance, related to `namedclass`.
- - Internal `concat()` for faster, simpler string concatentation.
+ - Internal `concat()` for faster, simpler string concatenation.
  - Fix compile omission in string conversions for `nullptr_t`.
  - `pqxx::size_buffer()` can now size multiple values at once.
  - `multi_to_string()` to convert multiple values into one `std::string`.
@@ -324,7 +569,7 @@
  - Work around Visual Studio 2017 not supporting ISO 646.
 6.3.0
  - New "table stream" classes by Joseph Durel: stream_from/stream_to.
- - Support weird characters in more identifiers: cursors, notifcations, etc.
+ - Support weird characters in more identifiers: cursors, notifications, etc.
  - Connection policies are deprecated.  It'll all be one class in 7.0!
  - Connection deactivation/reactivation is deprecated.
  - Some items that were documented as deprecated are now also declared as such.

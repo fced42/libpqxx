@@ -1,16 +1,20 @@
+#ifndef PQXX_INTERNAL_GATES_RESULT_PIPELINE_HXX
+#define PQXX_INTERNAL_GATES_RESULT_PIPELINE_HXX
+
 #include <pqxx/internal/callgate.hxx>
 
 namespace pqxx::internal::gate
 {
-class PQXX_PRIVATE result_pipeline : callgate<result const>
+class PQXX_PRIVATE result_pipeline final : callgate<result const>
 {
   friend class pqxx::pipeline;
 
-  result_pipeline(reference x) : super(x) {}
+  explicit constexpr result_pipeline(reference x) noexcept : super(x) {}
 
-  std::shared_ptr<std::string const> query_ptr() const
+  [[nodiscard]] std::shared_ptr<std::string const> query_ptr() const
   {
     return home().query_ptr();
   }
 };
 } // namespace pqxx::internal::gate
+#endif

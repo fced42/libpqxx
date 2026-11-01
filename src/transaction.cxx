@@ -2,7 +2,7 @@
  *
  * pqxx::transaction represents a regular database transaction.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -22,29 +22,29 @@
 
 
 pqxx::internal::basic_transaction::basic_transaction(
-  connection &c, zview begin_command, std::string_view tname) :
-        dbtransaction(c, tname)
+  connection &cx, zview begin_command, std::string_view tname, sl loc) :
+        dbtransaction(cx, tname, loc)
 {
   register_transaction();
-  direct_exec(begin_command);
+  direct_exec(begin_command, loc);
 }
 
 
 pqxx::internal::basic_transaction::basic_transaction(
-  connection &c, zview begin_command, std::string &&tname) :
-        dbtransaction(c, std::move(tname))
+  connection &cx, zview begin_command, std::string &&tname, sl loc) :
+        dbtransaction(cx, std::move(tname), loc)
 {
   register_transaction();
-  direct_exec(begin_command);
+  direct_exec(begin_command, loc);
 }
 
 
 pqxx::internal::basic_transaction::basic_transaction(
-  connection &c, zview begin_command) :
-        dbtransaction(c)
+  connection &cx, zview begin_command, sl loc) :
+        dbtransaction(cx, loc)
 {
   register_transaction();
-  direct_exec(begin_command);
+  direct_exec(begin_command, loc);
 }
 
 
@@ -57,28 +57,28 @@ pqxx::internal::basic_transaction::basic_transaction(
 pqxx::internal::basic_transaction::~basic_transaction() noexcept = default;
 
 
-void pqxx::internal::basic_transaction::do_commit()
+void pqxx::internal::basic_transaction::do_commit(sl loc)
 {
   static auto const commit_q{std::make_shared<std::string>("COMMIT"sv)};
   try
   {
-    direct_exec(commit_q);
+    direct_exec(commit_q, loc);
   }
   catch (statement_completion_unknown const &e)
   {
     // Outcome of "commit" is unknown.  This is a disaster: we don't know the
     // resulting state of the database.
-    process_notice(internal::concat(e.what(), "\n"));
+    process_notice(std::format("{}\n", e.what()));
 
-    std::string msg{internal::concat(
-      "WARNING: Commit of transaction '", name(),
-      "' is unknown. "
+    std::string msg{std::format(
+      "WARNING: {}: Commit status of transaction '{}' is unknown. "
       "There is no way to tell whether the transaction succeeded "
-      "or was aborted except to check manually.\n")};
+      "or was aborted except to check manually.\n",
+      pqxx::source_loc(loc), name())};
     process_notice(msg);
     // Strip newline.  It was only needed for process_notice().
     msg.pop_back();
-    throw in_doubt_error{std::move(msg)};
+    throw in_doubt_error{msg, e.location()};
   }
   catch (std::exception const &e)
   {
@@ -86,16 +86,17 @@ void pqxx::internal::basic_transaction::do_commit()
     {
       // We've lost the connection while committing.  There is just no way of
       // telling what happened on the other end.  >8-O
-      process_notice(internal::concat(e.what(), "\n"));
+      process_notice(std::format("{}\n", e.what()));
 
-      auto msg{internal::concat(
-        "WARNING: Connection lost while committing transaction '", name(),
-        "'. There is no way to tell whether the transaction succeeded "
-        "or was aborted except to check manually.\n")};
+      auto msg{std::format(
+        "WARNING: {}: Connection lost while committing transaction '{}'.  "
+        "There is no way to tell whether the transaction succeeded or was "
+        "aborted except to check manually.\n",
+        pqxx::source_loc(loc), name())};
       process_notice(msg);
       // Strip newline.  It was only needed for process_notice().
       msg.pop_back();
-      throw in_doubt_error{std::move(msg)};
+      throw in_doubt_error{msg, loc};
     }
     else
     {

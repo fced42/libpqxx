@@ -2,14 +2,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/isolation instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_ISOLATION
-#define PQXX_H_ISOLATION
+#ifndef PQXX_ISOLATION_HXX
+#define PQXX_ISOLATION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."

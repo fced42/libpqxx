@@ -4,14 +4,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/subtransaction instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_SUBTRANSACTION
-#define PQXX_H_SUBTRANSACTION
+#ifndef PQXX_SUBTRANSACTION_HXX
+#define PQXX_SUBTRANSACTION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -21,6 +21,8 @@
 
 namespace pqxx
 {
+// NOLINTBEGIN(fuchsia-multiple-inheritance)
+
 /**
  * @ingroup transactions
  */
@@ -32,32 +34,34 @@ namespace pqxx
  * dropped before re-creating it, without failing if the table did not exist:
  *
  * ```cxx
- * void do_job(connection &C)
+ * void do_job(pqxx::connection &cx)
  * {
- *   string const temptable = "fleetingtable";
+ *   std::string const temptable = "fleetingtable";
  *
- *   work W(C, "do_job");
- *   do_firstpart(W);
+ *   pqxx::work tx(cx, "do_job");
+ *   do_firstpart(tx);
  *
  *   // Attempt to delete our temporary table if it already existed.
+ *   // (In reality you would just use the IF EXISTS option to DROP TABLE.)
  *   try
  *   {
- *     subtransaction S(W, "droptemp");
+ *     pqxx::subtransaction S(tx, "droptemp");
  *     S.exec0("DROP TABLE " + temptable);
  *     S.commit();
  *   }
- *   catch (undefined_table const &)
+ *   catch (pqxx::undefined_table const &)
  *   {
  *     // Table did not exist.  Which is what we were hoping to achieve anyway.
  *     // Carry on without regrets.
  *   }
  *
  *   // S may have gone into a failed state and been destroyed, but the
- *   // upper-level transaction W is still fine.  We can continue to use it.
- *   W.exec0("CREATE TEMP TABLE " + temptable + "(bar integer, splat
- * varchar)");
+ *   // upper-level transaction tx is still fine.  We can continue to use it.
+ *   tx.exec(
+ *       "CREATE TEMP TABLE " + temptable + "(bar integer, splat varchar)"
+ *   ).no_rows();
  *
- *   do_lastpart(W);
+ *   do_lastpart(tx);
  * }
  * ```
  *
@@ -73,24 +77,39 @@ namespace pqxx
  * one object of a type derived from @ref pqxx::transaction_focus active on it
  * at a time.
  */
-class PQXX_LIBEXPORT subtransaction : public transaction_focus,
-                                      public dbtransaction
+class PQXX_LIBEXPORT subtransaction final : public transaction_focus,
+                                            public dbtransaction
 {
 public:
   /// Nest a subtransaction nested in another transaction.
-  explicit subtransaction(dbtransaction &t, std::string_view tname = ""sv);
+  explicit subtransaction(
+    dbtransaction &t, std::string_view tname, sl = sl::current());
+
+  /// Nest a subtransaction nested in another transaction.
+  explicit subtransaction(dbtransaction &t, sl loc = sl::current()) :
+          subtransaction(t, "", loc)
+  {}
 
   /// Nest a subtransaction in another subtransaction.
-  explicit subtransaction(subtransaction &t, std::string_view name = ""sv);
+  subtransaction(
+    subtransaction &t, std::string_view name = ""sv, sl loc = sl::current());
 
-  virtual ~subtransaction() noexcept override;
+  subtransaction(subtransaction const &) = delete;
+  subtransaction(subtransaction &&) = delete;
+
+  ~subtransaction() noexcept override;
+
+  subtransaction &operator=(subtransaction const &) = delete;
+  subtransaction &operator=(subtransaction &&) = delete;
 
 private:
-  std::string quoted_name() const
+  [[nodiscard]] std::string quoted_name() const
   {
     return quote_name(transaction_focus::name());
   }
-  virtual void do_commit() override;
+  void do_commit(sl) override;
 };
+
+// NOLINTEND(fuchsia-multiple-inheritance)
 } // namespace pqxx
 #endif

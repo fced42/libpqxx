@@ -1,6 +1,6 @@
 /** Implementation of libpqxx exception classes.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -8,119 +8,210 @@
  */
 #include "pqxx-source.hxx"
 
+#include <format>
+
 #include "pqxx/internal/header-pre.hxx"
 
 #include "pqxx/except.hxx"
-#include "pqxx/internal/concat.hxx"
 
 #include "pqxx/internal/header-post.hxx"
 
-pqxx::failure::failure(std::string const &whatarg) :
-        std::runtime_error{whatarg}
-{}
-
-
-pqxx::broken_connection::broken_connection() :
-        failure{"Connection to database failed."}
-{}
-
-
-pqxx::broken_connection::broken_connection(std::string const &whatarg) :
-        failure{whatarg}
-{}
-
-
-pqxx::variable_set_to_null::variable_set_to_null() :
-        variable_set_to_null{
-          "Attempt to set a variable to null.  This is not allowed."}
-{}
-
-
-pqxx::variable_set_to_null::variable_set_to_null(std::string const &whatarg) :
-        failure{whatarg}
-{}
-
-
-pqxx::sql_error::sql_error(
-  std::string const &whatarg, std::string const &Q, char const sqlstate[]) :
-        failure{whatarg}, m_query{Q}, m_sqlstate{sqlstate ? sqlstate : ""}
-{}
-
-
-pqxx::sql_error::~sql_error() noexcept = default;
-
-
-PQXX_PURE std::string const &pqxx::sql_error::query() const noexcept
+// Define virtual functions here so compilers will output vtables here, once.
+//
+// When compiling a class with virtual functions, compilers generally emit the
+// vtable in the translation unit(s) where they find the definition of its
+// first non-pure-virtual, non-inline virtual member function.  Or perhaps the
+// destructor.
+//
+// Either way it's easy to end up with lots of redundant definitions of the
+// same vtable across many object files, which is a waste of space and time.
+// Therefore, we try to define exception classes' first virtual member
+// functions here.
+namespace pqxx
 {
-  return m_query;
+failure::~failure() noexcept = default;
+std::string_view failure::name() const noexcept
+{
+  return "failure";
+}
+std::string_view broken_connection::name() const noexcept
+{
+  return "broken_connection";
+}
+std::string_view version_mismatch::name() const noexcept
+{
+  return "version_mismatch";
+}
+std::string_view variable_set_to_null::name() const noexcept
+{
+  return "variable_set_to_null";
+}
+std::string_view sql_error::name() const noexcept
+{
+  return "sql_error";
+}
+std::string_view protocol_violation::name() const noexcept
+{
+  return "protocol_violation";
+}
+std::string_view in_doubt_error::name() const noexcept
+{
+  return "in_doubt_error";
+}
+std::string_view transaction_rollback::name() const noexcept
+{
+  return "transaction_rollback";
+}
+std::string_view serialization_failure::name() const noexcept
+{
+  return "serialization_failure";
+}
+std::string_view statement_completion_unknown::name() const noexcept
+{
+  return "statement_completion_unknown";
+}
+std::string_view deadlock_detected::name() const noexcept
+{
+  return "deadlock_detected";
+}
+std::string_view internal_error::name() const noexcept
+{
+  return "internal_error";
 }
 
+// Special case: We add a prefix to the message.
+internal_error::internal_error(std::string const &whatarg, sl loc, st &&tr) :
+        failure{
+          std::format("LIBPQXX INTERNAL ERROR: {}", whatarg), loc,
+          // When there's no support, clang-tidy complains that our placeholder
+          // is trivially copyable and therefore the std::move() is pointless.
+          //
+          // NOLINTNEXTLINE(performance-move-const-arg)
+          std::move(tr)}
+{}
 
-PQXX_PURE std::string const &pqxx::sql_error::sqlstate() const noexcept
+std::string_view usage_error::name() const noexcept
 {
-  return m_sqlstate;
+  return "usage_error";
 }
-
-
-pqxx::in_doubt_error::in_doubt_error(std::string const &whatarg) :
-        failure{whatarg}
-{}
-
-
-pqxx::transaction_rollback::transaction_rollback(
-  std::string const &whatarg, std::string const &q, char const sqlstate[]) :
-        sql_error{whatarg, q, sqlstate}
-{}
-
-
-pqxx::serialization_failure::serialization_failure(
-  std::string const &whatarg, std::string const &q, char const sqlstate[]) :
-        transaction_rollback{whatarg, q, sqlstate}
-{}
-
-
-pqxx::statement_completion_unknown::statement_completion_unknown(
-  std::string const &whatarg, std::string const &q, char const sqlstate[]) :
-        transaction_rollback{whatarg, q, sqlstate}
-{}
-
-
-pqxx::deadlock_detected::deadlock_detected(
-  std::string const &whatarg, std::string const &q, char const sqlstate[]) :
-        transaction_rollback{whatarg, q, sqlstate}
-{}
-
-
-pqxx::internal_error::internal_error(std::string const &whatarg) :
-        std::logic_error{internal::concat("libpqxx internal error: ", whatarg)}
-{}
-
-
-pqxx::usage_error::usage_error(std::string const &whatarg) :
-        std::logic_error{whatarg}
-{}
-
-
-pqxx::argument_error::argument_error(std::string const &whatarg) :
-        invalid_argument{whatarg}
-{}
-
-
-pqxx::conversion_error::conversion_error(std::string const &whatarg) :
-        domain_error{whatarg}
-{}
-
-
-pqxx::conversion_overrun::conversion_overrun(std::string const &whatarg) :
-        conversion_error{whatarg}
-{}
-
-
-pqxx::range_error::range_error(std::string const &whatarg) :
-        out_of_range{whatarg}
-{}
-
-
-pqxx::blob_already_exists::blob_already_exists(std::string const &whatarg) :
-        failure{whatarg}
-{}
+std::string_view argument_error::name() const noexcept
+{
+  return "argument_error";
+}
+std::string_view conversion_error::name() const noexcept
+{
+  return "conversion_error";
+}
+std::string_view unexpected_null::name() const noexcept
+{
+  return "unexpected_null";
+}
+std::string_view conversion_overrun::name() const noexcept
+{
+  return "conversion_overrun";
+}
+std::string_view range_error::name() const noexcept
+{
+  return "range_error";
+}
+std::string_view unexpected_rows::name() const noexcept
+{
+  return "unexpected_rows";
+}
+std::string_view feature_not_supported::name() const noexcept
+{
+  return "feature_not_supported";
+}
+std::string_view data_exception::name() const noexcept
+{
+  return "data_exception";
+}
+std::string_view integrity_constraint_violation::name() const noexcept
+{
+  return "integrity_constraint_violation";
+}
+std::string_view restrict_violation::name() const noexcept
+{
+  return "restrict_violation";
+}
+std::string_view not_null_violation::name() const noexcept
+{
+  return "not_null_violation";
+}
+std::string_view foreign_key_violation::name() const noexcept
+{
+  return "foreign_key_violation";
+}
+std::string_view unique_violation::name() const noexcept
+{
+  return "unique_violation";
+}
+std::string_view check_violation::name() const noexcept
+{
+  return "check_violation";
+}
+std::string_view invalid_cursor_state::name() const noexcept
+{
+  return "invalid_cursor_state";
+}
+std::string_view invalid_sql_statement_name::name() const noexcept
+{
+  return "invalid_sql_statement_name";
+}
+std::string_view invalid_cursor_name::name() const noexcept
+{
+  return "invalid_cursor_name";
+}
+std::string_view syntax_error::name() const noexcept
+{
+  return "syntax_error";
+}
+std::string_view undefined_column::name() const noexcept
+{
+  return "undefined_column";
+}
+std::string_view undefined_function::name() const noexcept
+{
+  return "undefined_function";
+}
+std::string_view undefined_table::name() const noexcept
+{
+  return "undefined_table";
+}
+std::string_view insufficient_privilege::name() const noexcept
+{
+  return "insufficient_privilege";
+}
+std::string_view insufficient_resources::name() const noexcept
+{
+  return "insufficient_resources";
+}
+std::string_view disk_full::name() const noexcept
+{
+  return "disk_full";
+}
+std::string_view server_out_of_memory::name() const noexcept
+{
+  return "server_out_of_memory";
+}
+std::string_view too_many_connections::name() const noexcept
+{
+  return "too_many_connections";
+}
+std::string_view plpgsql_error::name() const noexcept
+{
+  return "plpgsql_error";
+}
+std::string_view plpgsql_raise::name() const noexcept
+{
+  return "plpgsql_raise";
+}
+std::string_view plpgsql_no_data_found::name() const noexcept
+{
+  return "plpgsql_no_data_found";
+}
+std::string_view plpgsql_too_many_rows::name() const noexcept
+{
+  return "plpgsql_too_many_rows";
+}
+} // namespace pqxx

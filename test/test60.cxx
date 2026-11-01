@@ -1,83 +1,72 @@
-#include <iostream>
-
 #include <pqxx/nontransaction>
 #include <pqxx/pipeline>
 #include <pqxx/transaction>
 
-#include "test_helpers.hxx"
-
-using namespace pqxx;
+#include "helpers.hxx"
 
 
 // Example program for libpqxx.  Test session variable functionality.
 namespace
 {
-std::string GetDatestyle(connection &conn)
+std::string get_datestyle(pqxx::connection &cx)
 {
-  return conn.get_var("DATESTYLE");
+  return cx.get_var("DATESTYLE");
 }
 
 
-std::string SetDatestyle(connection &conn, std::string style)
+std::string set_datestyle(pqxx::connection &cx, std::string const &style)
 {
-  conn.set_session_var("DATESTYLE", style);
-  std::string const fullname{GetDatestyle(conn)};
-  PQXX_CHECK(
-    not std::empty(fullname),
-    "Setting datestyle to " + style + " makes it an empty string.");
-
+  cx.set_session_var("DATESTYLE", style);
+  std::string const fullname{get_datestyle(cx)};
+  PQXX_CHECK(not std::empty(fullname));
   return fullname;
 }
 
 
-void CheckDatestyle(connection &conn, std::string expected)
+void check_datestyle(pqxx::connection &cx, std::string const &expected)
 {
-  PQXX_CHECK_EQUAL(GetDatestyle(conn), expected, "Got wrong datestyle.");
+  PQXX_CHECK_EQUAL(get_datestyle(cx), expected);
 }
 
 
-void RedoDatestyle(
-  connection &conn, std::string const &style, std::string const &expected)
+void redo_datestyle(
+  pqxx::connection &cx, std::string const &style, std::string const &expected)
 {
-  PQXX_CHECK_EQUAL(
-    SetDatestyle(conn, style), expected, "Set wrong datestyle.");
+  PQXX_CHECK_EQUAL(set_datestyle(cx, style), expected);
 }
 
 
-void ActivationTest(
-  connection &conn, std::string const &style, std::string const &expected)
+void check_setting_datestyle(
+  pqxx::connection &cx, std::string const &style, std::string const &expected)
 {
-  RedoDatestyle(conn, style, expected);
-  CheckDatestyle(conn, expected);
+  redo_datestyle(cx, style, expected);
+  check_datestyle(cx, expected);
 }
 
 
-void test_060()
+void test_060(pqxx::test::context &)
 {
-  connection conn;
+  pqxx::connection cx;
 
-  PQXX_CHECK(not std::empty(GetDatestyle(conn)), "Initial datestyle not set.");
+  PQXX_CHECK(not std::empty(get_datestyle(cx)));
 
-  std::string const ISOname{SetDatestyle(conn, "ISO")};
-  std::string const SQLname{SetDatestyle(conn, "SQL")};
+  std::string const ISOname{set_datestyle(cx, "ISO")};
+  std::string const SQLname{set_datestyle(cx, "SQL")};
 
-  PQXX_CHECK_NOT_EQUAL(ISOname, SQLname, "Same datestyle in SQL and ISO.");
+  PQXX_CHECK_NOT_EQUAL(ISOname, SQLname);
 
-  RedoDatestyle(conn, "SQL", SQLname);
+  redo_datestyle(cx, "SQL", SQLname);
 
-  ActivationTest(conn, "ISO", ISOname);
-  ActivationTest(conn, "SQL", SQLname);
+  check_setting_datestyle(cx, "ISO", ISOname);
+  check_setting_datestyle(cx, "SQL", SQLname);
 
   PQXX_CHECK_THROWS(
-    conn.set_session_var("bonjour_name", std::optional<std::string>{}),
-    pqxx::variable_set_to_null,
-    "Setting a variable to null did not report the error correctly.");
+    cx.set_session_var("bonjour_name", std::optional<std::string>{}),
+    pqxx::variable_set_to_null);
 
   // Prove that setting an unknown variable causes an error, as expected
-  quiet_errorhandler d{conn};
   PQXX_CHECK_THROWS(
-    conn.set_session_var("NONEXISTENT_VARIABLE_I_HOPE", 1), sql_error,
-    "Setting unknown variable failed to fail.");
+    cx.set_session_var("NONEXISTENT_VARIABLE_I_HOPE", 1), pqxx::sql_error);
 }
 
 

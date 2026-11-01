@@ -2,7 +2,7 @@
  *
  * pqxx::stream_to enables optimized batch updates to a database table.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
@@ -12,7 +12,6 @@
 
 #include "pqxx/internal/header-pre.hxx"
 
-#include "pqxx/internal/concat.hxx"
 #include "pqxx/internal/gates/connection-stream_to.hxx"
 #include "pqxx/stream_from.hxx"
 #include "pqxx/stream_to.hxx"
@@ -25,13 +24,37 @@ namespace
 using namespace std::literals;
 
 void begin_copy(
-  pqxx::transaction_base &tx, std::string_view table, std::string_view columns)
+  pqxx::transaction_base &tx, std::string_view table, std::string_view columns,
+  pqxx::sl loc)
 {
-  tx.exec0(
-    std::empty(columns) ?
-      pqxx::internal::concat("COPY "sv, table, " FROM STDIN"sv) :
-      pqxx::internal::concat(
-        "COPY "sv, table, "("sv, columns, ") FROM STDIN"sv));
+  pqxx::result res;
+  if (std::empty(columns))
+    res = tx.exec(std::format("COPY {} FROM STDIN", table));
+  else
+    res = tx.exec(std::format("COPY {} ({}) FROM STDIN", table, columns));
+  res.no_rows(loc);
+}
+
+
+/// Return the escape character for escaping the given special character.
+char escape_char(char special, pqxx::sl loc)
+{
+  switch (special)
+  {
+  case '\b': return 'b';
+  case '\f': return 'f';
+  case '\n': return 'n';
+  case '\r': return 'r';
+  case '\t': return 't';
+  case '\v': return 'v';
+  case '\\': return '\\';
+  default: break;
+  }
+  throw pqxx::internal_error{
+    std::format(
+      "Stream escaping unexpectedly stopped at '{}'.",
+      static_cast<unsigned>(static_cast<unsigned char>(special))),
+    loc};
 }
 } // namespace
 
@@ -40,31 +63,34 @@ pqxx::stream_to::~stream_to() noexcept
 {
   try
   {
-    complete();
+    complete(m_created_loc);
   }
   catch (std::exception const &e)
   {
-    reg_pending_error(e.what());
+    reg_pending_error(e.what(), m_created_loc);
   }
 }
 
 
-void pqxx::stream_to::write_raw_line(std::string_view text)
+void pqxx::stream_to::write_raw_line(std::string_view text, sl loc)
 {
-  internal::gate::connection_stream_to{m_trans.conn()}.write_copy_line(text);
+  internal::gate::connection_stream_to{trans().conn()}.write_copy_line(
+    text, loc);
 }
 
 
-void pqxx::stream_to::write_buffer()
+void pqxx::stream_to::write_buffer(sl loc)
 {
   if (not std::empty(m_buffer))
   {
     // In append_to_buffer() we write a tab after each field.  We only want a
     // tab _between_ fields.  Remove that last one.
+    // clang-tidy rule bug:
+    // NOLINTNEXTLINE(cert-dcl03-c)
     assert(m_buffer[std::size(m_buffer) - 1] == '\t');
     m_buffer.resize(std::size(m_buffer) - 1);
   }
-  write_raw_line(m_buffer);
+  write_raw_line(m_buffer, loc);
   m_buffer.clear();
 }
 
@@ -73,98 +99,62 @@ pqxx::stream_to &pqxx::stream_to::operator<<(stream_from &tr)
 {
   while (tr)
   {
-    const auto [line, size] = tr.get_raw_line();
+    const auto [line, size] = tr.get_raw_line(m_created_loc);
     if (line.get() == nullptr)
       break;
-    write_raw_line(std::string_view{line.get(), size});
+    write_raw_line(std::string_view{line.get(), size}, m_created_loc);
   }
   return *this;
 }
 
 
 pqxx::stream_to::stream_to(
-  transaction_base &tx, std::string_view path, std::string_view columns) :
+  transaction_base &tx, std::string_view path, std::string_view columns,
+  sl loc) :
         transaction_focus{tx, s_classname, path},
-        m_scanner{get_glyph_scanner(
-          pqxx::internal::enc_group(tx.conn().encoding_id()))}
+        m_finder{pqxx::internal::get_escape_finder<
+          '\b', '\f', '\n', '\r', '\t', '\v', '\\'>(
+          tx.conn().effective_encoding_group(loc), loc)},
+        m_created_loc{loc},
+        m_encoding_group{tx.conn().effective_encoding_group(loc)}
 {
-  begin_copy(tx, path, columns);
+  begin_copy(tx, path, columns, loc);
   register_me();
 }
 
 
-void pqxx::stream_to::complete()
+void pqxx::stream_to::complete(sl loc)
 {
   if (!m_finished)
   {
     m_finished = true;
     unregister_me();
-    internal::gate::connection_stream_to{m_trans.conn()}.end_copy_write();
+    internal::gate::connection_stream_to{trans().conn()}.end_copy_write(loc);
   }
 }
 
 
-/// Return escape letter for c's backslash sequence, or 0 if not needed.
-/** The API is a bit weird: you pass the width of the character, and its first
- * byte.  That's because we never need to escape a multibyte character anyway.
- */
-constexpr char escape(std::size_t width, char c)
+void pqxx::stream_to::escape_field_to_buffer(std::string_view data, sl loc)
 {
-  if (width == 1u)
-    switch (c)
-    {
-    case '\b': return 'b';
-    case '\f': return 'f';
-    case '\n': return 'n';
-    case '\r': return 'r';
-    case '\t': return 't';
-    case '\v': return 'v';
-    case '\\': return '\\';
-    }
-
-  PQXX_LIKELY
-  return '\0';
-}
-
-
-void pqxx::stream_to::escape_field_to_buffer(std::string_view data)
-{
-  if (not std::empty(data))
+  std::size_t const end{std::size(data)};
+  std::size_t here{0};
+  while (here < end)
   {
-    // Mark the beginning of a stretch that we can copy into our buffer in one
-    // go.  It feels like a waste to invoke generic multi-byte copies for every
-    // individual character in this loop, most of them actually probably only
-    // one byte long.
-    std::size_t begin_stretch{0};
-
-    std::size_t begin_char{0}, end;
-    // XXX: find_char<'\b', '\f', '\n', '\r', '\t', \v', '\\'>().
-    for (end = m_scanner(std::data(data), std::size(data), begin_char);
-         begin_char < std::size(data); begin_char = end,
-        end = m_scanner(std::data(data), std::size(data), begin_char))
+    auto const stop_char{m_finder(data, here, loc)};
+    // Append any unremarkable characters we just skipped over.
+    m_buffer.append(std::data(data) + here, stop_char - here);
+    here = stop_char;
+    if (stop_char < end)
     {
-      // Escape sequence letter, if needed.
-      char const esc{escape(end - begin_char, data[begin_char])};
-      if (esc != '\0')
-      {
-        // This character needs escaping.  So, it ends any trivially copyable
-        // stretch that we may have been having.
-
-        // Copy the stretch we've built up into our buffer.
-        m_buffer.append(
-          std::data(data) + begin_stretch, begin_char - begin_stretch);
-
-        // Escape the current character.
-        m_buffer.push_back('\\');
-        m_buffer.push_back(esc);
-
-        // Start a new stretch, right after the current character.
-        begin_stretch = end;
-      }
+      // The special character is usually a single ASCII byte, but it may also
+      // be a multibyte alias for one.  Either way, the server will see it as
+      // a single ASCII byte so that's what we write.
+      auto const [special, width]{internal::special_char(data, stop_char)};
+      m_buffer.push_back('\\');
+      m_buffer.push_back(escape_char(special, loc));
+      here += width;
     }
-    // Copy the final stretch.
-    m_buffer.append(
-      std::data(data) + begin_stretch, begin_char - begin_stretch);
   }
+  // Terminate the field.
   m_buffer.push_back('\t');
 }

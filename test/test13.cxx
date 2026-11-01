@@ -1,9 +1,7 @@
 #include <pqxx/transaction>
 #include <pqxx/transactor>
 
-#include "test_helpers.hxx"
-
-using namespace pqxx;
+#include "helpers.hxx"
 
 
 // Test program for libpqxx.  Verify abort behaviour of transactor.
@@ -16,69 +14,67 @@ using namespace pqxx;
 namespace
 {
 // Let's take a boring year that is not going to be in the "pqxxevents" table
-constexpr unsigned int BoringYear = 1977;
+constexpr int boring_year_13 = 1977;
 
 
 // Count events and specifically events occurring in Boring Year, leaving the
 // former count in the result pair's first member, and the latter in second.
-std::pair<int, int> count_events(connection &conn, std::string const &table)
+std::pair<int, int>
+count_events_13(pqxx::connection &cx, std::string const &table)
 {
-  work tx{conn};
+  pqxx::work tx{cx};
   std::string const count_query{"SELECT count(*) FROM " + table};
   return std::make_pair(
     tx.query_value<int>(count_query),
-    tx.query_value<int>(count_query + " WHERE year=" + to_string(BoringYear)));
+    tx.query_value<int>(
+      count_query + " WHERE year=" + pqxx::to_string(boring_year_13)));
 }
 
 
-struct deliberate_error : std::exception
-{};
-
-
-void failed_insert(connection &C, std::string const &table)
+void failed_insert(pqxx::connection &cx, std::string const &table)
 {
-  work tx(C);
-  result R = tx.exec0(
-    "INSERT INTO " + table + " VALUES (" + to_string(BoringYear) +
-    ", "
-    "'yawn')");
+  pqxx::work tx(cx);
+  pqxx::result const R = tx.exec(
+                             "INSERT INTO " + table + " VALUES (" +
+                             pqxx::to_string(boring_year_13) +
+                             ", "
+                             "'yawn')")
+                           .no_rows();
 
-  PQXX_CHECK_EQUAL(R.affected_rows(), 1, "Bad affected_rows().");
-  throw deliberate_error();
+  PQXX_CHECK_EQUAL(R.affected_rows(), 1);
+  throw pqxx::test::deliberate_error();
 }
 
 
-void test_013()
+void test_013(pqxx::test::context &)
 {
-  connection conn;
+  pqxx::connection cx;
   {
-    work tx{conn};
-    test::create_pqxxevents(tx);
+    pqxx::work tx{cx};
+    pqxx::test::create_pqxxevents(tx);
     tx.commit();
   }
 
   std::string const Table{"pqxxevents"};
 
   auto const Before{
-    perform([&conn, &Table] { return count_events(conn, Table); })};
-  PQXX_CHECK_EQUAL(
-    Before.second, 0,
-    "Already have event for " + to_string(BoringYear) + "--can't test.");
+    pqxx::perform([&cx, &Table] { return count_events_13(cx, Table); })};
+  PQXX_CHECK_EQUAL(Before.second, 0);
 
-  quiet_errorhandler d(conn);
+#include "pqxx/internal/ignore-deprecated-pre.hxx"
+  pqxx::quiet_errorhandler const d(cx);
+#include "pqxx/internal/ignore-deprecated-post.hxx"
   PQXX_CHECK_THROWS(
-    perform([&conn, &Table] { failed_insert(conn, Table); }), deliberate_error,
-    "Failing transactor failed to throw correct exception.");
+    pqxx::perform([&cx, &Table] { failed_insert(cx, Table); }),
+    pqxx::test::deliberate_error);
 
   auto const After{
-    perform([&conn, &Table] { return count_events(conn, Table); })};
+    pqxx::perform([&cx, &Table] { return count_events_13(cx, Table); })};
 
-  PQXX_CHECK_EQUAL(
-    After.first, Before.first, "abort() didn't reset event count.");
+  // The abort reset the events count.
+  PQXX_CHECK_EQUAL(After.first, Before.first);
 
-  PQXX_CHECK_EQUAL(
-    After.second, Before.second,
-    "abort() didn't reset event count for " + to_string(BoringYear));
+  PQXX_CHECK_EQUAL(After.second, Before.second);
 }
 
 

@@ -3,14 +3,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/transaction instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_TRANSACTION
-#define PQXX_H_TRANSACTION
+#ifndef PQXX_TRANSACTION_HXX
+#define PQXX_TRANSACTION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -20,48 +20,61 @@
 
 namespace pqxx::internal
 {
-/// Helper base class for the @ref transaction class template.
+/// Helper base class for the @ref pqxx::transaction class template.
 class PQXX_LIBEXPORT basic_transaction : public dbtransaction
 {
 protected:
   basic_transaction(
-    connection &c, zview begin_command, std::string_view tname);
-  basic_transaction(connection &c, zview begin_command, std::string &&tname);
-  basic_transaction(connection &c, zview begin_command);
-
-  virtual ~basic_transaction() noexcept override = 0;
+    connection &cx, zview begin_command, std::string_view tname,
+    sl = sl::current());
+  basic_transaction(
+    connection &cx, zview begin_command, std::string &&tname,
+    sl = sl::current());
+  basic_transaction(connection &cx, zview begin_command, sl = sl::current());
 
 private:
-  virtual void do_commit() override;
+  void do_commit(sl) override;
+
+public:
+  basic_transaction() = delete;
+  basic_transaction(basic_transaction const &) = delete;
+  basic_transaction(basic_transaction &&) = delete;
+
+  // NOLINTNEXTLINE(cppcoreguidelines-virtual-class-destructor)
+  ~basic_transaction() noexcept override = 0;
+
+  basic_transaction &operator=(basic_transaction const &) = delete;
+  basic_transaction &operator=(basic_transaction &&) = delete;
 };
 } // namespace pqxx::internal
 
 
 namespace pqxx
 {
-/**
- * @ingroup transactions
- */
-//@{
-
-/// Standard back-end transaction, templatised on isolation level.
-/** This is the type you'll normally want to use to represent a transaction on
+/// transaction Standard back-end transaction, templatised on isolation level.
+/** @ingroup transactions
+ * This is the type you'll normally want to use to represent a transaction on
  * the database.
+ *
+ * @tparam ISOLATION The transaction's "isolation level."  This is a standard
+ * SQL concept.  The default in PostgreSQL (and in libpqxx) is READ COMMITTED.
+ * @tparam READWRITE Whether this transaction is allowed to make changes to the
+ * database.
  *
  * Usage example: double all wages.
  *
  * ```cxx
- * extern connection C;
- * work T(C);
+ * extern pqxx::connection cx;
+ * pqxx::work tx(cx);
  * try
  * {
- *   T.exec0("UPDATE employees SET wage=wage*2");
- *   T.commit();	// NOTE: do this inside try block
+ *   tx.exec("UPDATE employees SET wage=wage*2").no_rows();
+ *   tx.commit();  // Do this inside "the" try block, right at the end.
  * }
- * catch (exception const &e)
+ * catch (std::exception const &e)
  * {
- *   cerr << e.what() << endl;
- *   T.abort();		// Usually not needed; same happens when T's life ends.
+ *   std::cerr << e.what() << '\n';
+ *   tx.abort();  // Usually not needed; same happens when tx's life ends.
  * }
  * ```
  */
@@ -73,36 +86,46 @@ class transaction final : public internal::basic_transaction
 public:
   /// Begin a transaction.
   /**
-   * @param c Connection for this transaction to operate on.
+   * @param cx Connection for this transaction to operate on.
    * @param tname Optional name for transaction.  Must begin with a letter and
    * may contain letters and digits only.
    */
-  transaction(connection &c, std::string_view tname) :
+  transaction(connection &cx, std::string_view tname, sl loc = sl::current()) :
           internal::basic_transaction{
-            c, internal::begin_cmd<ISOLATION, READWRITE>, tname}
+            cx, internal::begin_cmd<ISOLATION, READWRITE>, tname, loc}
   {}
 
   /// Begin a transaction.
   /**
-   * @param c Connection for this transaction to operate on.
+   * @param cx Connection for this transaction to operate on.
    * may contain letters and digits only.
    */
-  explicit transaction(connection &c) :
+  explicit transaction(connection &cx, sl loc = sl::current()) :
           internal::basic_transaction{
-            c, internal::begin_cmd<ISOLATION, READWRITE>}
+            cx, internal::begin_cmd<ISOLATION, READWRITE>, loc}
   {}
 
-  virtual ~transaction() noexcept override { close(); }
+  transaction(transaction const &) = delete;
+  transaction(transaction &&) = delete;
+  transaction &operator=(transaction const &) = delete;
+  transaction &operator=(transaction &&) = delete;
+
+  ~transaction() noexcept override { close(sl::current()); }
 };
 
 
 /// The default transaction type.
-using work = transaction<>;
+/** @ingroup transactions
+ */
+using work =
+  transaction<isolation_level::read_committed, write_policy::read_write>;
+
 
 /// Read-only transaction.
+/** @ingroup transactions
+ */
 using read_transaction =
   transaction<isolation_level::read_committed, write_policy::read_only>;
 
-//@}
 } // namespace pqxx
 #endif

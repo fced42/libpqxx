@@ -3,11 +3,17 @@ libpqxx
 
 Welcome to libpqxx, the C++ API to the PostgreSQL database management system.
 
-Home page: http://pqxx.org/development/libpqxx/
+Home page: [
+    http://pqxx.org/development/libpqxx
+](http://pqxx.org/development/libpqxx/)
 
-Find libpqxx on Github: https://github.com/jtv/libpqxx
+Find libpqxx on Github: [
+    https://github.com/jtv/libpqxx
+](https://github.com/jtv/libpqxx)
 
-Documentation on Read The Docs: https://libpqxx.readthedocs.io
+Documentation on Read The Docs: [
+    https://libpqxx.readthedocs.io
+](https://libpqxx.readthedocs.io)
 
 Compiling this package requires PostgreSQL to be installed -- or at least the C
 headers and library for client development.  The library builds on top of
@@ -17,29 +23,30 @@ If you're getting the code straight from the Git repo, the head of the `master`
 branch represents the current _development version._  Releases are tags on
 commits in `master`.  For example, to get version 7.1.1:
 
+```sh
     git checkout 7.1.1
+```
+
+
+Thank you!
+----------
+
+Somebody who deserves special mention here: our first Donor-level sponsor is
+Klaus ([@klaussilveira](https://github.com/klaussilveira)).  Thank you, Klaus!
 
 
 Upgrade notes
 -------------
 
-**The 7.x versions require at least C++17.**  Make sure your compiler is up to
-date.  For libpqxx 8.x you will need at least C++20.
-
-Also, **7.0 makes some breaking changes in rarely used APIs:**
-* There is just a single `connection` class.  It connects immediately.
-* Custom `connection` classes are no longer supported.
-* It's no longer possible to reactivate a connection once it's been closed.
-* The API for defining string conversions has changed.
-
-If you're defining your own type conversions, **7.1 requires one additional
-field in your `nullness` traits.**
+**The 8.x versions require at least C++20.**  Make sure your compiler is up to
+date.
 
 
 Building libpqxx
 ----------------
 
 There are two different ways of building libpqxx from the command line:
+
 1. Using CMake, on any system which supports it.
 2. On Unix-like systems, using a `configure` script.
 
@@ -47,8 +54,9 @@ There are two different ways of building libpqxx from the command line:
 HP-UX, Irix, Solaris, etc.  Even on Microsoft Windows, a Unix-like environment
 such as WSL, Cygwin, or MinGW should work.
 
-You'll find detailed build and install instructions in `BUILDING-configure.md`
-and `BUILDING-cmake.md`, respectively.
+You'll find detailed build and install instructions in
+[`BUILDING-configure.md`](./BUILDING-configure.md) and
+[`BUILDING-cmake.md`](./BUILDING-cmake.md), respectively.
 
 And if you're working with Microsoft Visual Studio, have a look at Gordon
 Elliott's
@@ -72,23 +80,39 @@ Programming with libpqxx
 
 Your first program will involve the libpqxx classes `connection` (see the
 `pqxx/connection.hxx` header), and `work` (a convenience alias for
-`transaction<>` which conforms to the interface defined in
-`pqxx/transaction_base.hxx`).
+`transaction<>`).  There are various transaction classes, but they all conform
+to the interface defined in the `transaction_base` class (in the
+`<pqxx/transaction_base.hxx>` header).
 
 These `*.hxx` headers are not the ones you include in your program.  Instead,
 include the versions without filename suffix (e.g. `pqxx/connection`).  Those
 will include the actual .hxx files for you.  This was done so that includes are
 in standard C++ style (as in `<iostream>` etc.), but an editor will still
-recognize them as files containing C++ code.
+recognize them as files containing C++ code.  Unless you care a lot about
+compilation speed, you'll probably just want to include everything:
 
-Continuing the list of classes, you will most likely also need the result class
-(`pqxx/result.hxx`).  In a nutshell, you create a `connection` based on a
-Postgres connection string (see below), create a `work` in the context of that
-connection, and run one or more queries on the work which return `result`
-objects.  The results are containers of rows of data, each of which you can
-treat as an array of strings: one for each field in the row.  It's that simple.
+```cxx
+#include <pqxx/pqxx>
+```
 
-Here is a simple example program to get you going, with full error handling:
+Continuing the list of classes, you may also need the `pqxx::result` class
+(`pqxx/result.hxx`).  In a nutshell, you create a `pqxx::connection` based on a
+PostgreSQL connection string (see below), create a pqxx::work (a transaction
+object) in the context of that connection, and run one or more queries or other
+SQL commands on that.
+
+Depending on how you execute a query, it can return a stream of `std::tuple`
+(each representing one row); or just one tuple or field; or a `pqxx::result`
+object which holds both the result data and additional metadata.  The metadata
+includes details like how many rows your query returned or modified, what the
+column names are, and so on.  A `pqxx::result` acts as a container of
+`pqxx::row_ref` objects, and a `pqxx::row_ref` in turn acts as a container of
+`pqxx::field_ref` objects.
+
+(They aren't _really_ containers; all these classes are essentially references
+to the real data returned by libpq.)
+
+Here's an example with all the basics to get you going:
 
 ```c++
     #include <iostream>
@@ -98,33 +122,78 @@ Here is a simple example program to get you going, with full error handling:
     {
         try
         {
-            // Connect to the database.
-            pqxx::connection C;
-            std::cout << "Connected to " << C.dbname() << '\n';
+            // Connect to the database.  You can have multiple connections open
+            // at the same time, even to the same database.
+            pqxx::connection cx;
+            std::cout << "Connected to " << cx.dbname() << '\n';
 
-            // Start a transaction.
-            pqxx::work W{C};
+            // Start a transaction.  A connection can only have one transaction
+            // open at the same time, but after you finish a transaction, you
+            // can start a new one on the same connection.
+            pqxx::work tx{cx};
 
-            // Perform a query and retrieve all results.
-            pqxx::result R{W.exec("SELECT name FROM employee")};
+            // Query data of two columns, converting them to std::string and
+            // int respectively.  Iterate the rows.
+            for (auto [name, salary] : tx.query<std::string, int>(
+                "SELECT name, salary FROM employee ORDER BY name"))
+            {
+                std::cout << name << " earns " << salary << ".\n";
+            }
 
-            // Iterate over results.
-            std::cout << "Found " << R.size() << "employees:\n";
-            for (auto row: R)
-                std::cout << row[0].c_str() << '\n';
+            // For large amounts of data, "streaming" the results is more
+            // efficient.  It does not work for all types of queries though.
+            //
+            // You can read fields as std::string_view here, which is not
+            // something you can do in most places.  A string_view becomes
+            // meaningless when the underlying string ceases to exist.  In this
+            // particular situation, you can convert a field to string_view and
+            // it will be valid for just that one iteration of the loop.  The
+            // next iteration may overwrite or deallocate its buffer space.
+            for (auto [name, salary] : tx.stream<std::string_view, int>(
+                "SELECT name, salary FROM employee"))
+            {
+                std::cout << name << " earns " << salary << ".\n";
+            }
 
-            // Perform a query and check that it returns no result.
+            // Execute a statement, and check that it returns 0 rows of data.
+            // This will throw pqxx::unexpected_rows if the query returns rows.
             std::cout << "Doubling all employees' salaries...\n";
-            W.exec0("UPDATE employee SET salary = salary*2");
+            tx.exec("UPDATE employee SET salary = salary*2").no_rows();
 
-            // Commit the transaction.
+            // Shorthand: conveniently query a single value from the database,
+            // and convert it to an `int`.
+            int my_salary = tx.query_value<int>(
+                "SELECT salary FROM employee WHERE name = 'Me'");
+            std::cout << "I now earn " << my_salary << ".\n";
+
+            // Or, query one whole row.  This function will throw an exception
+            // unless the result contains exactly 1 row.
+            auto [top_name, top_salary] = tx.query1<std::string, int>(
+                R"(
+                    SELECT name, salary
+                    FROM employee
+                    WHERE salary = (SELECT max(salary) FROM employee)
+                    LIMIT 1
+                )");
+            std::cout << "Top earner is " << top_name << " with a salary of "
+                      << top_salary << ".\n";
+
+            // If you need to access the result metadata, not just the actual
+            // field values, use `exec()`.  It returns a pqxx::result object.
+            pqxx::result res = tx.exec("SELECT * FROM employee");
+            std::cout << "Columns:\n";
+            for (pqxx::row_size_type col = 0; col < res.columns(); ++col)
+                std::cout << res.column_name(col) << '\n';
+
+            // Commit the transaction.  If you don't do this, the database will
+            // undo any changes you made in the transaction.
             std::cout << "Making changes definite: ";
-            W.commit();
+            tx.commit();
             std::cout << "OK.\n";
         }
         catch (std::exception const &e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << "ERROR: " << e.what() << '\n';
             return 1;
         }
         return 0;
@@ -148,6 +217,7 @@ PostgreSQL documentation for authoritative information.
 
 The connection string consists of attribute=value pairs separated by spaces,
 e.g. "user=john password=1x2y3z4".  The valid attributes include:
+
 * `host` —
   Name of server to connect to, or the full file path (beginning with a
   slash) to a Unix-domain socket on the local machine.  Defaults to
@@ -178,22 +248,36 @@ define those variables that require non-default values.
 Linking with libpqxx
 --------------------
 
-To link your final program, make sure you link to both the C-level libpq library
-and the actual C++ library, libpqxx.  With most Unix-style compilers, you'd do
-this using the options
+To link your final program, make sure you link to both libpqxx and the
+underlying C-level library, libpq, in that order.
 
-    -lpqxx -lpq
+With most Unix-style compilers, you'd do this using these options while
+linking: `-lpqxx -lpq`
 
-while linking.  Both libraries must be in your link path, so the linker knows
-where to find them.  Any dynamic libraries you use must also be in a place
-where the loader can find them when loading your program at runtime.
+Both libraries must be in your link path, so the linker knows where to find
+them.  Any dynamic libraries you use must also be in a place where the loader
+can find them when loading your program at runtime.
 
-Some users have reported problems using the above syntax, however, particularly
-when multiple versions of libpqxx are partially or incorrectly installed on the
-system.  If you get massive link errors, try removing the "-lpqxx" argument from
-the command line and replacing it with the name of the libpqxx library binary
-instead.  That's typically libpqxx.a, but you'll have to add the path to its
-location as well, e.g. /usr/local/pqxx/lib/libpqxx.a.  This will ensure that the
-linker will use that exact version of the library rather than one found
-elsewhere on the system, and eliminate worries about the exact right version of
-the library being installed with your program..
+Sometimes people run into trouble with this when they have more than one
+lipqxx binary on their system.  If you get massive link errors, try removing
+the "-lpqxx" argument from the command line and replacing it with the name of
+the libpqxx library binary instead.  That's typically libpqxx.a, but you'll
+have to add the path to its location as well, e.g.
+`/usr/local/pqxx/lib/libpqxx.a`.  This will ensure that the linker will use
+that exact version of the library rather than one found elsewhere on the
+system, and eliminate worries about the exact right version of the library
+being installed with your program..
+
+If you get a moderate number of link errors which include a missing symbol
+`check_pqxx_version_X_Y` (where `X` and `Y` are numbers), that's typically a
+sign that you're linking to a different version of libpqxx than the one whose
+headers your compiler used while compiling.
+
+And Visual Studio users in particular, beware: when linking object files and
+libraries, _do not mix Release artefacts with Debug artefacts._  This can be
+especially confusing when you install libpqxx from a pre-built package.  Which
+kind of binary did you get?
+
+Actually the same thing _can_ happen with other compilers: most compilers have
+options that change the code they produce in incompatible ways.  Mixing files
+from different kinds of builds can lead to link errors, or worse, crashes.

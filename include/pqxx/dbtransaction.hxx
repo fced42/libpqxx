@@ -4,14 +4,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/dbtransaction instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_DBTRANSACTION
-#define PQXX_H_DBTRANSACTION
+#ifndef PQXX_DBTRANSACTION_HXX
+#define PQXX_DBTRANSACTION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -52,18 +52,24 @@ namespace pqxx
  */
 class PQXX_LIBEXPORT PQXX_NOVTABLE dbtransaction : public transaction_base
 {
+public:
+  dbtransaction() = delete;
+
 protected:
   /// Begin transaction.
-  explicit dbtransaction(connection &c) : transaction_base{c} {}
-  /// Begin transaction.
-  dbtransaction(connection &c, std::string_view tname) :
-          transaction_base{c, tname}
+  explicit dbtransaction(connection &cx, sl loc = sl::current()) :
+          transaction_base{cx, loc}
   {}
   /// Begin transaction.
   dbtransaction(
-    connection &c, std::string_view tname,
-    std::shared_ptr<std::string> rollback_cmd) :
-          transaction_base{c, tname, rollback_cmd}
+    connection &cx, std::string_view tname, sl loc = sl::current()) :
+          transaction_base{cx, tname, loc}
+  {}
+  /// Begin transaction.
+  dbtransaction(
+    connection &cx, std::string_view tname,
+    std::shared_ptr<std::string> rollback_cmd, sl loc = sl::current()) :
+          transaction_base{cx, tname, std::move(rollback_cmd), loc}
   {}
 };
 } // namespace pqxx

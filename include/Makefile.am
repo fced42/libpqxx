@@ -1,13 +1,12 @@
-SUBDIRS = pqxx
-
 nobase_include_HEADERS= pqxx/pqxx \
 	pqxx/array pqxx/array.hxx \
-	pqxx/binarystring pqxx/binarystring.hxx \
 	pqxx/blob pqxx/blob.hxx \
 	pqxx/composite pqxx/composite.hxx \
+	pqxx/config-compiler.h \
 	pqxx/connection pqxx/connection.hxx \
 	pqxx/cursor pqxx/cursor.hxx \
 	pqxx/dbtransaction pqxx/dbtransaction.hxx \
+	pqxx/encoding_group pqxx/encoding_group.hxx \
 	pqxx/errorhandler pqxx/errorhandler.hxx \
 	pqxx/except pqxx/except.hxx \
 	pqxx/field pqxx/field.hxx \
@@ -38,42 +37,42 @@ nobase_include_HEADERS= pqxx/pqxx \
 	pqxx/version pqxx/version.hxx \
 	pqxx/internal/array-composite.hxx \
 	pqxx/internal/callgate.hxx \
-	pqxx/internal/concat.hxx \
+	pqxx/internal/connection-string.hxx \
 	pqxx/internal/conversions.hxx \
-	pqxx/internal/encoding_group.hxx \
 	pqxx/internal/encodings.hxx \
 	pqxx/internal/header-pre.hxx \
 	pqxx/internal/header-post.hxx \
 	pqxx/internal/ignore-deprecated-post.hxx \
 	pqxx/internal/ignore-deprecated-pre.hxx \
-	pqxx/internal/libpq-forward.hxx \
 	pqxx/internal/result_iter.hxx \
 	pqxx/internal/result_iterator.hxx \
 	pqxx/internal/sql_cursor.hxx \
 	pqxx/internal/statement_parameters.hxx \
 	pqxx/internal/stream_iterator.hxx \
+	pqxx/internal/stream_query.hxx \
+	pqxx/internal/stream_query_impl.hxx \
 	pqxx/internal/wait.hxx \
 	pqxx/internal/gates/connection-errorhandler.hxx \
 	pqxx/internal/gates/connection-largeobject.hxx \
 	pqxx/internal/gates/connection-notification_receiver.hxx \
 	pqxx/internal/gates/connection-pipeline.hxx \
 	pqxx/internal/gates/connection-sql_cursor.hxx \
+	pqxx/internal/gates/connection-stream_from.hxx \
+	pqxx/internal/gates/connection-stream_to.hxx \
 	pqxx/internal/gates/connection-transaction.hxx \
 	pqxx/internal/gates/errorhandler-connection.hxx \
-	pqxx/internal/gates/icursorstream-icursor_iterator.hxx \
+	pqxx/internal/gates/field_ref-const_row_iterator.hxx \
 	pqxx/internal/gates/icursor_iterator-icursorstream.hxx \
+	pqxx/internal/gates/icursorstream-icursor_iterator.hxx \
 	pqxx/internal/gates/result-connection.hxx \
 	pqxx/internal/gates/result-creation.hxx \
+	pqxx/internal/gates/result-field_ref.hxx \
 	pqxx/internal/gates/result-pipeline.hxx \
 	pqxx/internal/gates/result-sql_cursor.hxx \
-	pqxx/internal/gates/transaction-sql_cursor.hxx \
+	pqxx/internal/gates/row_ref-const_result_iterator.hxx \
+	pqxx/internal/gates/row_ref-result.hxx \
+	pqxx/internal/gates/row_ref-row.hxx \
 	pqxx/internal/gates/transaction-transaction_focus.hxx
 
 
-nobase_nodist_include_HEADERS = \
-	pqxx/config-public-compiler.h
-
-EXTRA_DIST = \
-	pqxx/doc/*.md \
-	pqxx/doc/mainpage.md.template \
-	pqxx/version.hxx.template
+nobase_nodist_include_HEADERS = pqxx/internal/config.h

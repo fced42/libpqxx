@@ -1,3 +1,4 @@
+// NOLINT(llvm-header-guard)
 /* Compiler settings for compiling libpqxx headers, and workarounds for all.
  *
  * Include this before including any other libpqxx headers from within libpqxx.
@@ -10,12 +11,16 @@
  * Include this file at the highest aggregation level possible to avoid nesting
  * and to keep things simple.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
+
+#if __has_include(<version>)
+#  include <version>
+#endif
 
 // NO GUARD HERE! This part should be included every time this file is.
 #if defined(_MSC_VER)
@@ -25,19 +30,8 @@
 #  pragma warning(push, 4)
 
 // Visual C++ generates some entirely unreasonable warnings.  Disable them.
-// Copy constructor could not be generated.
-#  pragma warning(disable : 4511)
-// Assignment operator could not be generated.
-#  pragma warning(disable : 4512)
-// Can't expose outside classes without exporting them.  Except the MSVC docs
-// say please ignore the warning if it's a standard library class.
-#  pragma warning(disable : 4251)
-// Can't derive library classes from outside classes without exporting them.
-// Except the MSVC docs say please ignore the warning if the parent class is
-// in the standard library.
-#  pragma warning(disable : 4275)
-// Can't inherit from non-exported class.
-#  pragma warning(disable : 4275)
+#  pragma warning(disable : 4061 4251 4275 4275 4511 4512 4514 4623 4625)
+#  pragma warning(disable : 4626 4702 4820 4868 5026 5027 5031 5045 6294)
 
 #endif // _MSC_VER
 
@@ -49,29 +43,116 @@
 #define PQXX_HEADER_PRE
 
 
-// Workarounds & definitions that need to be included even in library's headers
-#include "pqxx/config-public-compiler.h"
+// Configuration macros enabled by the build system.
+#include "pqxx/internal/config.h"
 
-// Enable ISO-646 alternative operaotr representations: "and" instead of "&&"
-// etc. on older compilers.  C++20 removes this header.
-#if __has_include(<ciso646>)
-#  include <ciso646>
+// MSVC has a nonstandard definition of __cplusplus.
+#if defined(_MSC_VER)
+#  define PQXX_CPLUSPLUS _MSVC_LANG
+#else
+#  define PQXX_CPLUSPLUS __cplusplus
 #endif
 
-
-#if defined(PQXX_HAVE_GCC_PURE)
+#if __has_cpp_attribute(gnu::pure)
 /// Declare function "pure": no side effects, only reads globals and its args.
-#  define PQXX_PURE __attribute__((pure))
+/** Be careful with exceptions.  The compiler may elide calls, which may stop
+ * an exception from happening; or reorder them, moving a call outside of a
+ * `try` block that was meant to catch the exception.
+ */
+#  define PQXX_PURE [[gnu::pure]]
 #else
 #  define PQXX_PURE /* pure */
 #endif
 
 
-#if defined(__GNUC__)
+#if __has_cpp_attribute(gnu::hot)
+/// Tell the compiler that this function can get called a lot.
+#  define PQXX_HOT [[gnu::hot]]
+#else
+#  define PQXX_HOT /* hot */
+#endif
+
+
+#if __has_cpp_attribute(gnu::cold)
 /// Tell the compiler to optimise a function for size, not speed.
-#  define PQXX_COLD __attribute__((cold))
+#  define PQXX_COLD [[gnu::cold]]
 #else
 #  define PQXX_COLD /* cold */
+#endif
+
+
+#if __has_cpp_attribute(gnu::always_inline)
+/// Never generate an out-of-line version of this inline function.
+#  define PQXX_INLINE_ONLY [[gnu::always_inline]]
+#elif __has_cpp_attribute(msvc::forceinline)
+/// Never generate an out-of-line version of this inline function.
+#  define PQXX_INLINE_ONLY [[msvc::forceinline]]
+#else
+#  define PQXX_INLINE_ONLY /* always inline */
+#endif
+
+
+/// Don't generate out-of-line version of inline function for coverage runs.
+/** This helps avoid a lot of false positives with gcov.  The out-of-line
+ * function never gets executed, and so its code is all marked as not covered
+ * by the test suite.  The code may get executed, but all inline.
+ *
+ * We're only defining this for gcc, since that's the compiler we use for test
+ * coverage analysis.
+ */
+#if defined(PQXX_COVERAGE) && __has_cpp_attribute(gnu::always_inline)
+#  define PQXX_INLINE_COV [[gnu::always_inline]]
+#else
+#  define PQXX_INLINE_COV /* inline-only on coverage runs */
+#endif
+
+
+/// Never inline this function.
+/** Bear in mind that this only works for the specific compilers for which we
+ * know non-standard attributes that achieve this.
+ */
+#if __has_cpp_attribute(gnu::noinline)
+#  define PQXX_NOINLINE [[gnu::noinline]]
+#elif __has_cpp_attribute(msvc::noinline)
+#  define PQXX_NOINLINE [[msvc::noinline]]
+#else
+#  define PQXX_NOINLINE /* noinline */
+#endif
+
+
+#if __has_cpp_attribute(gnu::returns_nonnull)
+/// For functions returning a pointer: the pointer is never null.
+#  define PQXX_RETURNS_NONNULL [[gnu::returns_nonnull]]
+#else
+#  define PQXX_RETURNS_NONNULL /* returns nonnull */
+#endif
+
+
+#if __has_cpp_attribute(gnu::null_terminated_string_arg)
+/// Function argument n (counted starting from 1) is a zero-terminated string.
+#  define PQXX_ZARG(n) [[gnu::null_terminated_string_arg((n))]]
+#else
+#  define PQXX_ZARG(n) /* null-terminated string arg */
+#endif
+
+
+// Not all gcc versions we're seeing support the argument-less version.
+#if defined(PQXX_HAVE_ZARGS)
+/// This function's C-style string arguments are zero-terminated.
+#  define PQXX_ZARGS [[gnu::null_terminated_string_arg]]
+#else
+#  define PQXX_ZARGS /* null-terminated string args */
+#endif
+
+
+// C++ extension similar to C's "restrict" keyword.
+/** Apparently gcc accepts both `__restrict` and `__restrict__`, the latter
+ * being the standard gcc format; but Visual Studio accepts only `__restrict`.
+ */
+#if defined(PQXX_HAVE_UU_RESTRICT)
+#  define PQXX_RESTRICT __restrict
+#else
+#  define PQXX_RESTRICT /* restrict */
 #endif
 
 
@@ -141,8 +222,8 @@
 
 #elif defined(PQXX_HAVE_GCC_VISIBILITY) // !_WIN32
 
-#  define PQXX_LIBEXPORT __attribute__((visibility("default")))
-#  define PQXX_PRIVATE __attribute__((visibility("hidden")))
+#  define PQXX_LIBEXPORT [[gnu::visibility("default")]]
+#  define PQXX_PRIVATE [[gnu::visibility("hidden")]]
 
 #endif // PQXX_HAVE_GCC_VISIBILITY
 
@@ -159,11 +240,9 @@
 #  define PQXX_NOVTABLE /* novtable */
 #endif
 
-// C++20: Assume support.
-#if defined(PQXX_HAVE_LIKELY)
-#  define PQXX_LIKELY [[likely]]
-#  define PQXX_UNLIKELY [[unlikely]]
+// C++23: Assume support.
+#if defined(PQXX_HAVE_ASSUME)
+#  define PQXX_ASSUME(condition) [[assume(condition)]]
 #else
-#  define PQXX_LIKELY   /* [[likely]] */
-#  define PQXX_UNLIKELY /* [[unlikely]] */
+#  define PQXX_ASSUME(condition) while (false)
 #endif

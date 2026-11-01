@@ -2,54 +2,65 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/version instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_VERSION
+#ifndef PQXX_VERSION_HXX
+#define PQXX_VERSION_HXX
 
-#  if !defined(PQXX_HEADER_PRE)
-#    error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
-#  endif
+#if !defined(PQXX_HEADER_PRE)
+#  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
+#endif
 
-/// Full libpqxx version string.
-#  define PQXX_VERSION "7.7.4"
-/// Library ABI version.
-#  define PQXX_ABI "7.7"
+#include <string_view>
 
-/// Major version number.
-#  define PQXX_VERSION_MAJOR 7
-/// Minor version number.
-#  define PQXX_VERSION_MINOR 7
 
-#  define PQXX_VERSION_CHECK check_pqxx_version_7_7
-
-namespace pqxx::internal
+namespace pqxx
 {
-/// Library version check stub.
-/** Helps detect version mismatches between libpqxx headers and the libpqxx
- * library binary.
+/// Full libpqxx version string.
+constexpr inline std::string_view const version{"8.1.0"};
+
+
+/// Libpqxx ABI version string: major and minor version, but no patch.
+/** For example, for libpqxx 9.3.1, this will be "9.3".
  *
- * Sometimes users run into trouble linking their code against libpqxx because
- * they build their own libpqxx, but the system also has a different version
- * installed.  The declarations in the headers against which they compile their
- * code will differ from the ones used to build the libpqxx version they're
- * using, leading to confusing link errors.  The solution is to generate a link
- * error when the libpqxx binary is not the same version as the libpqxx headers
- * used to compile the code.
- *
- * This function's definition is in the libpqxx binary, so it's based on the
- * version as found in the binary.  The headers contain a call to the function,
- * whose name contains the libpqxx version as found in the headers.  (The
- * library build process will use its own local headers even if another version
- * of the headers is installed on the system.)
- *
- * If the libpqxx binary was compiled for a different version than the user's
- * code, linking will fail with an error: `check_pqxx_version_*_*` will not
- * exist for the given version number.
+ * @warning Many factors can influence the library's ABI, including compiler,
+ * compiler version, and compilation options.  An ABI can also change radically
+ * during release candidate development.  So don't count fully on it.
  */
-PQXX_LIBEXPORT int PQXX_VERSION_CHECK() noexcept;
-} // namespace pqxx::internal
+constexpr inline std::string_view const abi_version{"8.1"};
+
+
+/// Major libpqxx version number.  (E.g. for libpqxx 9.3.1, this will be 9.)
+constexpr inline int const version_major{8};
+
+
+/// Minor libpqxx version number.  (E.g. for libpqxx 9.3.1, this will be 3.)
+constexpr inline int const version_minor{1};
+
+
+/// Libpqxx patch version number.  (E.g. for libpqxx 9.3.1, this will be 1.)
+/** For "special" versions such as pre-releases, the last component of the
+ * version string is not a simple number, and `version_patch` will be -1.
+ */
+constexpr inline int const version_patch{0};
+} // namespace pqxx
+
+
+// NOLINTBEGIN(modernize-macro-to-enum)
+
+/// Full libpqxx version string.  @deprecated Use @ref pqxx::version instead.
+#define PQXX_VERSION "8.1.0"
+/// Library ABI version.  @deprecated Use @ref pqxx::abi_version instead.
+#define PQXX_ABI "8.1"
+/// Major version number.  @deprecated Use @ref pqxx::version_major instead.
+#define PQXX_VERSION_MAJOR 8
+/// Minor version number.  @deprecated Use @ref pqxx::version_minor instead.
+#define PQXX_VERSION_MINOR 1
+
+// NOLINTEND(modernize-macro-to-enum)
+
 #endif

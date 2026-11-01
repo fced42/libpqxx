@@ -1,22 +1,19 @@
 #include <pqxx/transaction>
 
-#include "test_helpers.hxx"
-
-using namespace pqxx;
+#include "helpers.hxx"
 
 
-// Simple test program for libpqxx.  Issue invalid query and handle error.
+// Simple test and sample code for libpqxx.  Issue invalid query and handle
+// error.
 namespace
 {
-void test_056()
+void test_056(pqxx::test::context &)
 {
-  connection conn;
-  work tx{conn};
-  quiet_errorhandler d(conn);
+  pqxx::connection cx;
+  pqxx::work tx{cx};
 
   PQXX_CHECK_THROWS(
-    tx.exec("DELIBERATELY INVALID TEST QUERY..."), sql_error,
-    "SQL syntax error did not raise expected exception.");
+    tx.exec("DELIBERATELY INVALID TEST QUERY..."), pqxx::sql_error);
 }
 
 

@@ -1,67 +1,71 @@
-#include <iostream>
-
 #include <pqxx/connection>
 #include <pqxx/transaction>
 
-#include "test_helpers.hxx"
-
-using namespace pqxx;
+#include "helpers.hxx"
 
 
-// Simple test program for libpqxx.  Open a connection to database, start a
+// Simple test program for libpqxx.  Open a connection to the database, start a
 // transaction, and perform a query inside it.
 namespace
 {
-void test_021()
+void test_021(pqxx::test::context &)
 {
-  connection conn;
+  pqxx::connection cx;
 
-  std::string const HostName{
-    ((conn.hostname() == nullptr) ? "<local>" : conn.hostname())};
-  conn.process_notice(
-    std::string{} + "database=" + conn.dbname() +
+  std::string const host{
+    ((cx.hostname() == nullptr) ? "<local>" : cx.hostname())};
+#include <pqxx/internal/ignore-deprecated-pre.hxx>
+  cx.process_notice(
+    std::string{} + "database=" + cx.dbname() +
     ", "
     "username=" +
-    conn.username() +
+    cx.username() +
     ", "
     "hostname=" +
-    HostName +
+    host +
     ", "
     "port=" +
-    to_string(conn.port()) +
+    pqxx::to_string(cx.port()) +
     ", "
     "backendpid=" +
-    to_string(conn.backendpid()) + "\n");
+    pqxx::to_string(cx.backendpid()) + "\n");
+#include <pqxx/internal/ignore-deprecated-post.hxx>
 
-  work tx{conn, "test_021"};
+  pqxx::work tx{cx, "test_021"};
 
   // By now our connection should really have been created
-  conn.process_notice("Printing details on actual connection\n");
-  conn.process_notice(
-    std::string{} + "database=" + conn.dbname() +
+  cx.process_notice("Printing details on actual connection\n");
+#include <pqxx/internal/ignore-deprecated-pre.hxx>
+  cx.process_notice(
+    std::string{} + "database=" + cx.dbname() +
     ", "
     "username=" +
-    conn.username() +
+    cx.username() +
     ", "
     "hostname=" +
-    HostName +
+    host +
     ", "
     "port=" +
-    to_string(conn.port()) +
+    pqxx::to_string(cx.port()) +
     ", "
     "backendpid=" +
-    to_string(conn.backendpid()) + "\n");
+    pqxx::to_string(cx.backendpid()) + "\n");
+#include <pqxx/internal/ignore-deprecated-post.hxx>
 
-  std::string P;
-  from_string(conn.port(), P);
-  PQXX_CHECK_EQUAL(
-    P, to_string(conn.port()), "Port string conversion is broken.");
-  PQXX_CHECK_EQUAL(to_string(P), P, "Port string conversion is broken.");
+  std::string p;
 
-  result R(tx.exec("SELECT * FROM pg_tables"));
+#include <pqxx/internal/ignore-deprecated-pre.hxx>
+  pqxx::from_string(cx.port(), p);
+  PQXX_CHECK_EQUAL(p, pqxx::to_string(cx.port()));
+#include <pqxx/internal/ignore-deprecated-post.hxx>
+  PQXX_CHECK_EQUAL(pqxx::to_string(p), p);
 
-  tx.process_notice(pqxx::internal::concat(
-    to_string(std::size(R)), " result row in transaction ", tx.name(), "\n"));
+  pqxx::result const R(tx.exec("SELECT * FROM pg_tables"));
+
+  tx.process_notice(
+    std::format(
+      "{} result row in transaction {}\n", pqxx::to_string(std::size(R)),
+      tx.name()));
   tx.commit();
 }
 

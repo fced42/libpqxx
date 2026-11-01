@@ -1,14 +1,29 @@
 Statement parameters                                        {#parameters}
 ====================
 
-When you execute a prepared statement (see @ref prepared), or a parameterised
-statement (using functions like `pqxx::connection::exec_params`), you may write
-special _placeholders_ in the query text.  They look like `$1`, `$2`, and so
-on.
+In an SQL statement (including a prepared statement), you may write special
+_placeholders_ in the query text.  They look like `$1`, `$2`, and so on.
 
-If you execute the query and pass parameter values, the call will respectively
-substitute the first where it finds `$1`, the second where it finds `$2`, et
-cetera.
+When executing the query later, you pass parameter values.  The call will
+respectively substitute the first parameter value where it finds `$1` in the
+query, the second where it finds `$2`, _et cetera._
+
+For example, let's say you have a transaction called `tx`.  Here's how you
+execute a plain statement:
+
+```cxx
+pqxx::result r = tx.exec("SELECT name FROM employee where id=101");
+```
+
+Inserting the `101` in there is awkward and even dangerous.  We'll get to that
+in a moment.  Here's how you do it better, using parameters:
+
+```cxx
+pqxx::result r = tx.exec("SELECT name FROM employee WHERE id=$1", {101});
+```
+
+That second argument to `exec()`, the `{101}`, constructs a `pqxx::params`
+object.  The `exec()` call will fill this value in where the query says `$1`.
 
 Doing this saves you work.  If you don't use statement parameters, you'll need
 to quote and escape your values (see `connection::quote()` and friends) as you
@@ -18,38 +33,66 @@ Or if you forget to do that, you leave yourself open to horrible
 [SQL injection attacks](https://xkcd.com/327/).  Trust me, I was born in a town
 whose name started with an apostrophe!
 
-Statement parameters save you this work.  With these parameters you can pass
-your values as-is, and they will go across the wire to the database in a safe
-format.
+With parameters you can pass your values as they are, and they will go across
+the wire to the database in a safe format.
 
 In some cases it may even be faster!  When a parameter represents binary data
 (as in the SQL `BYTEA` type), libpqxx will send it directly as binary, which is
-a bit more efficient.  If you insert the binary data directly in your query
-text, your CPU will have some extra work to do, converting the data into a text
-format, escaping it, and adding quotes.
+a bit more efficient than the standard textual format in which the data
+normally gets sent to the database.  If you insert the binary data directly in
+your query text, your CPU will have some extra work to do, converting the data
+into a text format, escaping it, and adding quotes; and the data will take up
+more bytes, which take time to transmit.
 
 
-Dynamic parameter lists
------------------------
+Multiple parameters
+-------------------
 
-In rare cases you may just not know how many parameters you'll pass into your
-statement when you call it.
+The `pqxx::params` class is quite flexible.  It can contain any number of
+parameter values, of many different types.
 
-For these situations, have a look at `params`.  It lets you compose your
-parameters list on the fly, even add whole ranges of parameters at a time.
+You can pass them in while constructing the `params` object:
 
-You can pass a `params` into your statement as a normal parameter.  It will
-fill in all the parameter values it contains into that position of the
-statement's overall parameter list.
+```cxx
+pqxx::params{23, "acceptance", 3.14159}
+```
 
-So if you call your statement passing a regular parameter `a`, a
-`params` containing just a parameter `b`, and another regular parameter `c`,
-then your call will pass parameters `a`, `b`, and `c`.  Or if the params object
-is empty, it will pass just `a` and `c`.  If the params object contains `x` and
-`y`, your call will pass `a, x, y, c`.
+Or you can add them one by one:
 
-You can mix static and dynamic parameters freely.  Don't go overboard though:
-complexity is where bugs happen!
+```cxx
+pqxx::params p;
+p.append(23);
+p.append("acceptance");
+p.append(3.14159);
+```
+
+You can also combine the two, passing some values int the constructor and
+adding the rest later.  You can even insert a `params` into a `params`:
+
+```cxx
+pqxx::params p{23};
+p.append(params{"acceptance", 3.14159});
+```
+
+Each of these examples will produce the same list of parameters.
+
+
+Encodings and complex parameters
+--------------------------------
+
+For some parameter types, the `params` code will need to know about the text
+encoding.  This happens especially with composite types.  You may see errors
+about the encoding not being known.
+
+To prevent that, pass as your first parameter the `pqxx::encoding_group` for
+the connection's current client encoding.  You can get this by calling the
+connection's `get_encoding_group()` member function, but as a shortcut, you may
+just pass in a reference to your connection or your transaction instead.  Or if
+you already had a `pqxx::conversion_context`, you can pass that instead.
+
+In those cases, that special first argument will _not_ become a parameter to
+the SQL statement.  It will only be used to obtain the necessary text encoding
+information.
 
 
 Generating placeholders
@@ -69,13 +112,16 @@ counter which produces those placeholder strings, `$1`, `$2`, `$3`, et cetera.
 When you start generating a complex statement, you can create both a `params`
 and a `placeholders`:
 
+```cxx
     pqxx::params values;
     pqxx::placeholders name;
+```
 
 Let's say you've got some complex code to generate the conditions for an SQL
 "WHERE" clause.  You'll generally want to do these things close together in
 your, so that you don't accidentally update one part and forget another:
 
+```cxx
     if (extra_clause)
     {
       // Extend the query text, using the current placeholder.
@@ -85,6 +131,7 @@ your, so that you don't accidentally update one part and forget another:
       // Move on to the next placeholder value.
       name.next();
     }
+```
 
 Depending on the starting value of `name`, this might add to `query` a fragment
-like "` AND x = $3`" or "` AND x = $5`".
+like " `AND x = $3` " or " `AND x = $5` ".

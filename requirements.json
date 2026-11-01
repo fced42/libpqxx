@@ -1,9 +1,10 @@
 {
     "description": "Minimum versions needed of various things.",
-    "c++": "17",
-    "libpq": "9.6",
-    "postgresql": "9.6",
-    "gcc": "8",
-    "clang": "11",
-    "msvc": "2019"
+    "c++": "20",
+    "libpq": "13.0",
+    "postgresql": "13.0",
+    "gcc": "13",
+    "clang": "16",
+    "msvc": "2022",
+    "python": "3.11"
 }

@@ -2,16 +2,29 @@
  */
 #include "pqxx-source.hxx"
 
+#include "pqxx/internal/config.h"
+
+#include <array>
+
+#include <libpq-fe.h>
+
+// libpq17: Prune #includes once PQsocketPoll() is ubiquitous.
+
+// For WSAPoll().
+// Normally we'd do this *after* including <thread>, but MinGW complains: it
+// issues a warning telling us to include winsock2.h before windows.h.
+// We don't actually include windows.h ourselves, but it looks as if MinGW's
+// <thread> does.
+#if __has_include(<winsock2.h>)
+#  include <winsock2.h>
+#  define PQXX_HAVE_SELECT
+#endif
+
 // The <thread> header is still broken on MinGW.  :-(
 #if defined(PQXX_HAVE_SLEEP_FOR)
 #  include <thread>
 #endif
 
-// For WSAPoll():
-#if __has_include(<winsock2.h>)
-#  include <winsock2.h>
-#  define PQXX_HAVE_SELECT
-#endif
 #if __has_include(<ws2tcpip.h>)
 #  include <ws2tcpip.h>
 #endif
@@ -53,17 +66,20 @@
 
 namespace
 {
-template<typename T> T to_milli(unsigned seconds, unsigned microseconds)
+// libpq17: No longer needed once we have PQsocketPoll().
+template<typename T>
+T to_milli(unsigned seconds, unsigned microseconds, pqxx::sl loc)
 {
   return pqxx::check_cast<T>(
     (seconds * 1000) + (microseconds / 1000),
-    "Wait timeout value out of bounds.");
+    "Wait timeout value out of bounds.", loc);
 }
 
 
-#if defined(PQXX_HAVE_SELECT)
+// libpq17: No longer needed once we have PQsocketPoll().
+#if !defined(PQXX_HAVE_POLL) && defined(PQXX_HAVE_SELECT)
 /// Set a bit on an fd_set.
-[[maybe_unused]] void set_fdbit(fd_set &bits, int fd)
+[[maybe_unused]] void set_fdbit(fd_set &bits, auto fd)
 {
 #  ifdef _MSC_VER
 // Suppress pointless, unfixable warnings in Visual Studio.
@@ -78,28 +94,55 @@ template<typename T> T to_milli(unsigned seconds, unsigned microseconds)
 #  endif
 }
 #endif
+
+
+#if defined(PQXX_HAVE_PQSOCKETPOLL)
+/// Compute absolute time (microseconds since Epoch) from wait period.
+[[nodiscard]] inline auto
+compute_deadline(unsigned seconds, unsigned microseconds, pqxx::sl loc)
+{
+  auto const duration{seconds * 1'000'000 + microseconds};
+  auto const now{PQgetCurrentTimeUSec()};
+  if (std::cmp_greater(
+        duration, (std::numeric_limits<pg_usec_time_t>::max)() - now))
+    throw pqxx::range_error{
+      std::format(
+        "Wait period is too long ({}.{} seconds).", seconds, microseconds),
+      loc};
+  return now + duration;
+}
+#endif
 } // namespace
 
 
 void pqxx::internal::wait_fd(
   int fd, bool for_read, bool for_write, unsigned seconds,
-  unsigned microseconds)
+  unsigned microseconds, [[maybe_unused]] sl loc)
 {
-// WSAPoll is available in winsock2.h only for versions of Windows >= 0x0600
-#if defined(_WIN32) && (_WIN32_WINNT >= 0x0600)
+#if defined(PQXX_HAVE_PQSOCKETPOLL)
+  // libpq17: Drop alternative implementations once libpq17 is the minimum.
+  auto const deadline{compute_deadline(seconds, microseconds, loc)};
+  PQsocketPoll(fd, for_read, for_write, deadline);
+
+#else
+
+#  if defined(_WIN32) && (_WIN32_WINNT >= 0x0600)
+  // WSAPoll is available in winsock2.h only for versions of Windows >= 0x0600.
+  static_assert(SOCKET_ERROR == -1);
   short const events{static_cast<short>(
     (for_read ? POLLRDNORM : 0) | (for_write ? POLLWRNORM : 0))};
   WSAPOLLFD fdarray{SOCKET(fd), events, 0};
-  WSAPoll(&fdarray, 1u, to_milli<unsigned>(seconds, microseconds));
-  // TODO: Check for errors.
-#elif defined(PQXX_HAVE_POLL)
+  int const code{WSAPoll(
+    &fdarray, 1u,
+    check_cast<int>(
+      to_milli<unsigned>(seconds, microseconds, loc), "Timeout too large."))};
+#  elif defined(PQXX_HAVE_POLL)
   auto const events{static_cast<short>(
     POLLERR | POLLHUP | POLLNVAL | (for_read ? POLLIN : 0) |
     (for_write ? POLLOUT : 0))};
   pollfd pfd{fd, events, 0};
-  poll(&pfd, 1, to_milli<int>(seconds, microseconds));
-  // TODO: Check for errors.
-#else
+  int const code{poll(&pfd, 1, to_milli<int>(seconds, microseconds, loc))};
+#  else
   // No poll()?  Our last option is select().
   fd_set read_fds;
   FD_ZERO(&read_fds);
@@ -116,20 +159,39 @@ void pqxx::internal::wait_fd(
   set_fdbit(except_fds, fd);
 
   timeval tv = {seconds, microseconds};
-  select(fd + 1, &read_fds, &write_fds, &except_fds, &tv);
-  // TODO: Check for errors.
+  int const code{select(fd + 1, &read_fds, &write_fds, &except_fds, &tv)};
+#  endif
+
+  if (code == -1)
+  {
+    constexpr std::size_t buf_size{200u};
+    std::array<char, buf_size> errbuf{};
+    int const err_code{
+#  if defined(_WIN32) && (_WIN32_WINNT >= 0x0600)
+      WSAGetLastError()
+#  else
+      errno
+#  endif
+    };
+    throw std::runtime_error{pqxx::internal::error_string(err_code, errbuf)};
+  }
 #endif
 }
 
 
-void PQXX_COLD pqxx::internal::wait_for(unsigned int microseconds)
+PQXX_COLD void pqxx::internal::wait_for(unsigned int microseconds)
 {
-#if defined(PQXX_HAVE_SLEEP_FOR)
+  // libpq17: If MinGW is fixed, use this_thread, otherwise PQsocketPoll().
+#if defined(PQXX_HAVE_PQSOCKETPOLL)
+  // MinGW has a strange problem where std::this_thread::sleep_for() can fail
+  // to compile.  It's a configuration error, but it causes enough distraction
+  // that we'd rather not call sleep_for() if we can avoid it.
+  //
+  // Luckily libpq has an alternative now.
+  PQsocketPoll(0, 0, 0, PQgetCurrentTimeUSec() + microseconds);
+#elif defined(PQXX_HAVE_SLEEP_FOR)
   std::this_thread::sleep_for(std::chrono::microseconds{microseconds});
 #else
-  // MinGW still does not have a functioning <thread> header.  Work around this
-  // using select().
-  // Not worth optimising for though -- they'll have to fix it at some point.
   timeval tv{microseconds / 1'000'000u, microseconds % 1'000'000u};
   select(0, nullptr, nullptr, nullptr, &tv);
 #endif

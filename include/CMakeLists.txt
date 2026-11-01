@@ -19,12 +19,12 @@ install(
     PATTERN *.hxx
     # TODO: Is there any way to do this with CMake's globbing?
     PATTERN array
-    PATTERN binarystring
     PATTERN blob
     PATTERN composite
     PATTERN connection
     PATTERN cursor
     PATTERN dbtransaction
+    PATTERN encoding_group
     PATTERN errorhandler
     PATTERN except
     PATTERN field
@@ -55,11 +55,10 @@ install(
     PATTERN zview
     PATTERN internal/*.hxx
     PATTERN internal/gates/*.hxx
-    PATTERN config-public-compiler.h
+    PATTERN internal/config.h
     PATTERN pqxx
     PATTERN doc EXCLUDE
 )
-
 install(
     DIRECTORY pqxx/doc/
     DESTINATION ${CMAKE_INSTALL_DOCDIR}

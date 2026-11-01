@@ -4,14 +4,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/notification instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_NOTIFICATION
-#define PQXX_H_NOTIFICATION
+#ifndef PQXX_NOTIFICATION_HXX
+#define PQXX_NOTIFICATION_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -24,6 +24,9 @@
 
 namespace pqxx
 {
+// This code is deprecated.
+// LCOV_EXCL_START
+
 /// "Observer" base class for notifications.
 /** @addtogroup notification Notifications and Receivers
  *
@@ -58,21 +61,25 @@ class PQXX_LIBEXPORT PQXX_NOVTABLE notification_receiver
 public:
   /// Register the receiver with a connection.
   /**
-   * @param c Connnection to operate on.
+   * @param cx Connection to operate on.
    * @param channel Name of the notification to listen for.
    */
-  notification_receiver(connection &c, std::string_view channel);
-  /// Register the receiver with a connection.
+  [[deprecated("Use pqxx::connection::listen() instead.")]]
+  notification_receiver(
+    connection &cx, std::string_view channel, sl loc = sl::current());
+
   notification_receiver(notification_receiver const &) = delete;
-  /// Register the receiver with a connection.
-  notification_receiver &operator=(notification_receiver const &) = delete;
+  notification_receiver(notification_receiver &&) = delete;
+
   /// Deregister the receiver.
   virtual ~notification_receiver();
+
+  notification_receiver &operator=(notification_receiver const &) = delete;
+  notification_receiver &operator=(notification_receiver &&) = delete;
 
   /// The channel that this receiver listens on.
   [[nodiscard]] std::string const &channel() const & { return m_channel; }
 
-  // TODO: Change API to take payload as zview instead of string ref.
   /// Overridable: action to invoke when notification arrives.
   /**
    * @param payload An optional string that may have been passed to the NOTIFY
@@ -84,11 +91,12 @@ public:
   virtual void operator()(std::string const &payload, int backend_pid) = 0;
 
 protected:
-  connection &conn() const noexcept { return m_conn; }
+  [[nodiscard]] connection &conn() const noexcept { return m_conn; }
 
 private:
   connection &m_conn;
   std::string m_channel;
 };
+// LCOV_EXCL_STOP
 } // namespace pqxx
 #endif

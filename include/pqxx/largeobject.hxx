@@ -2,14 +2,14 @@
  *
  * DO NOT INCLUDE THIS FILE DIRECTLY; include pqxx/largeobject instead.
  *
- * Copyright (c) 2000-2022, Jeroen T. Vermeulen.
+ * Copyright (c) 2000-2026, Jeroen T. Vermeulen.
  *
  * See COPYING for copyright license.  If you did not receive a file called
  * COPYING with this source code, please notify the distributor of this
  * mistake, or contact the author.
  */
-#ifndef PQXX_H_LARGEOBJECT
-#define PQXX_H_LARGEOBJECT
+#ifndef PQXX_LARGEOBJECT_HXX
+#define PQXX_LARGEOBJECT_HXX
 
 #if !defined(PQXX_HEADER_PRE)
 #  error "Include libpqxx headers as <pqxx/header>, not <pqxx/header.hxx>."
@@ -20,8 +20,18 @@
 #include "pqxx/dbtransaction.hxx"
 
 
+// This whole header is deprecated, so there's not much point checking these.
+//
+// NOLINTBEGIN(
+//    cppcoreguidelines-avoid-const-or-ref-data-members,
+//    fuchsia-multiple-inheritance
+// )
+
 namespace pqxx
 {
+// This class is deprecated.
+// LCOV_EXCL_START
+
 /// Identity of a large object.
 /** @deprecated Use the @ref blob class instead.
  *
@@ -61,6 +71,7 @@ public:
   [[deprecated("Use blob instead.")]] largeobject(
     dbtransaction &t, std::string_view file);
 
+  // NOLINTBEGIN(google-explicit-constructor,hicpp-explicit-conversions)
   /// Take identity of an opened large object.
   /** Copy identity of already opened large object.  Note that this may be done
    * as an implicit conversion.
@@ -68,6 +79,7 @@ public:
    */
   [[deprecated("Use blob instead.")]] largeobject(
     largeobjectaccess const &o) noexcept;
+  // NOLINTEND(google-explicit-constructor,hicpp-explicit-conversions)
 
   /// Object identifier.
   /** The number returned by this function identifies the large object in the
@@ -137,10 +149,11 @@ public:
   void remove(dbtransaction &t) const;
 
 protected:
-  PQXX_PURE static internal::pq::PGconn *
+  PQXX_PURE [[nodiscard]] static internal::pq::PGconn *
   raw_connection(dbtransaction const &T);
 
-  PQXX_PRIVATE std::string reason(connection const &, int err) const;
+  PQXX_PRIVATE [[nodiscard]] std::string
+  reason(connection const &, int err) const;
 
 private:
   oid m_id = oid_none;
@@ -150,7 +163,7 @@ private:
 /// Accessor for large object's contents.
 /** @deprecated Use the `blob` class instead.
  */
-class PQXX_LIBEXPORT largeobjectaccess : private largeobject
+class PQXX_LIBEXPORT largeobjectaccess final : private largeobject
 {
 public:
   using largeobject::size_type;
@@ -213,7 +226,13 @@ public:
   [[deprecated("Use blob instead.")]] largeobjectaccess(
     dbtransaction &t, std::string_view file, openmode mode = default_mode);
 
+  largeobjectaccess() = delete;
+  largeobjectaccess(largeobjectaccess const &) = delete;
+  largeobjectaccess(largeobjectaccess &&) = delete;
   ~largeobjectaccess() noexcept { close(); }
+
+  largeobjectaccess &operator=(largeobjectaccess const &) = delete;
+  largeobjectaccess &operator=(largeobjectaccess &&) = delete;
 
   /// Object identifier.
   /** The number returned by this function uniquely identifies the large object
@@ -338,13 +357,9 @@ public:
   using largeobject::operator>;
   using largeobject::operator>=;
 
-  largeobjectaccess() = delete;
-  largeobjectaccess(largeobjectaccess const &) = delete;
-  largeobjectaccess operator=(largeobjectaccess const &) = delete;
-
 private:
-  PQXX_PRIVATE std::string reason(int err) const;
-  internal::pq::PGconn *raw_connection() const
+  PQXX_PRIVATE [[nodiscard]] std::string reason(int err) const;
+  [[nodiscard]] internal::pq::PGconn *raw_connection() const
   {
     return largeobject::raw_connection(m_trans);
   }
@@ -356,6 +371,8 @@ private:
   int m_fd = -1;
 };
 
+
+// NOLINTBEGIN(cppcoreguidelines-owning-memory)
 
 /// Streambuf to use large objects in standard I/O streams.
 /** @deprecated Access large objects directly using the @ref blob class.
@@ -370,7 +387,7 @@ private:
  * replaced with a single, much simpler class.
  */
 template<typename CHAR = char, typename TRAITS = std::char_traits<CHAR>>
-class largeobject_streambuf : public std::basic_streambuf<CHAR, TRAITS>
+class largeobject_streambuf final : public std::basic_streambuf<CHAR, TRAITS>
 {
   using size_type = largeobject::size_type;
 
@@ -405,36 +422,42 @@ public:
     initialize(mode);
   }
 
-  virtual ~largeobject_streambuf() noexcept
+  largeobject_streambuf(largeobject_streambuf const &) = delete;
+  largeobject_streambuf(largeobject_streambuf &&) = delete;
+
+  ~largeobject_streambuf() noexcept override
   {
     delete[] m_p;
     delete[] m_g;
   }
 
+  largeobject_streambuf &operator=(largeobject_streambuf const &) = delete;
+  largeobject_streambuf &operator=(largeobject_streambuf &&) = delete;
+
   /// For use by large object stream classes.
   void process_notice(zview const &s) { m_obj.process_notice(s); }
 
 protected:
-  virtual int sync() override
+  int sync() override
   {
     // setg() sets eback, gptr, egptr.
     this->setg(this->eback(), this->eback(), this->egptr());
     return overflow(eof());
   }
 
-  virtual pos_type seekoff(off_type offset, seekdir dir, openmode) override
+  pos_type seekoff(off_type offset, seekdir dir, openmode) override
   {
     return adjust_eof(m_obj.cseek(largeobjectaccess::off_type(offset), dir));
   }
 
-  virtual pos_type seekpos(pos_type pos, openmode) override
+  pos_type seekpos(pos_type pos, openmode) override
   {
     largeobjectaccess::pos_type const newpos{
       m_obj.cseek(largeobjectaccess::off_type(pos), std::ios::beg)};
     return adjust_eof(newpos);
   }
 
-  virtual int_type overflow(int_type ch) override
+  int_type overflow(int_type ch = eof()) override
   {
     auto *const pp{this->pptr()};
     if (pp == nullptr)
@@ -447,17 +470,17 @@ protected:
       auto const write_sz{pp - pb};
       auto const written_sz{
         m_obj.cwrite(pb, static_cast<std::size_t>(pp - pb))};
-      if (internal::cmp_less_equal(written_sz, 0))
+      if (std::cmp_less_equal(written_sz, 0))
         throw internal_error{
           "pqxx::largeobject: write failed "
           "(is transaction still valid on write or flush?), "
           "libpq reports error"};
       else if (write_sz != written_sz)
-        throw internal_error{
+        throw internal_error{std::format(
           "pqxx::largeobject: write failed "
-          "(is transaction still valid on write or flush?), " +
-          std::to_string(written_sz) + "/" + std::to_string(write_sz) +
-          " bytes written"};
+          "(is transaction still valid on write or flush?), {}/{} "
+          "bytes written",
+          written_sz, write_sz)};
       auto const out{adjust_eof(written_sz)};
 
       if constexpr (std::is_arithmetic_v<decltype(out)>)
@@ -476,9 +499,7 @@ protected:
     return res;
   }
 
-  virtual int_type overflow() { return overflow(eof()); }
-
-  virtual int_type underflow() override
+  int_type underflow() override
   {
     if (this->gptr() == nullptr)
       return eof();
@@ -492,7 +513,7 @@ protected:
 
 private:
   /// Shortcut for traits_type::eof().
-  static int_type eof() { return traits_type::eof(); }
+  static constexpr int_type eof() { return traits_type::eof(); }
 
   /// Helper: change error position of -1 to EOF (probably a no-op).
   template<typename INTYPE> static std::streampos adjust_eof(INTYPE pos)
@@ -530,6 +551,7 @@ private:
   char_type *m_g, *m_p;
 };
 
+// NOLINTEND(cppcoreguidelines-owning-memory)
 
 /// Input stream that gets its data from a large object.
 /** @deprecated Access large objects directly using the @ref blob class.
@@ -542,7 +564,7 @@ private:
  * replaced with a single, much simpler class.
  */
 template<typename CHAR = char, typename TRAITS = std::char_traits<CHAR>>
-class basic_ilostream : public std::basic_istream<CHAR, TRAITS>
+class basic_ilostream final : public std::basic_istream<CHAR, TRAITS>
 {
   using super = std::basic_istream<CHAR, TRAITS>;
 
@@ -600,7 +622,7 @@ using ilostream = basic_ilostream<char>;
  * replaced with a single, much simpler class.
  */
 template<typename CHAR = char, typename TRAITS = std::char_traits<CHAR>>
-class basic_olostream : public std::basic_ostream<CHAR, TRAITS>
+class basic_olostream final : public std::basic_ostream<CHAR, TRAITS>
 {
   using super = std::basic_ostream<CHAR, TRAITS>;
 
@@ -641,7 +663,10 @@ public:
     super::init(&m_buf);
   }
 
-  ~basic_olostream()
+  basic_olostream(basic_olostream const &) = delete;
+  basic_olostream(basic_olostream &&) = delete;
+
+  ~basic_olostream() override
   {
     try
     {
@@ -653,6 +678,9 @@ public:
       m_buf.process_notice(e.what());
     }
   }
+
+  basic_olostream &operator=(basic_olostream const &) = delete;
+  basic_olostream &operator=(basic_olostream &&) = delete;
 
 private:
   largeobject_streambuf<CHAR, TRAITS> m_buf;
@@ -672,7 +700,7 @@ using olostream = basic_olostream<char>;
  * replaced with a single, much simpler class.
  */
 template<typename CHAR = char, typename TRAITS = std::char_traits<CHAR>>
-class basic_lostream : public std::basic_iostream<CHAR, TRAITS>
+class basic_lostream final : public std::basic_iostream<CHAR, TRAITS>
 {
   using super = std::basic_iostream<CHAR, TRAITS>;
 
@@ -713,7 +741,11 @@ public:
     super::init(&m_buf);
   }
 
-  ~basic_lostream()
+  basic_lostream() = delete;
+  basic_lostream(basic_lostream const &) = delete;
+  basic_lostream(basic_lostream &&) = delete;
+
+  ~basic_lostream() override
   {
     try
     {
@@ -726,10 +758,20 @@ public:
     }
   }
 
+  basic_lostream &operator=(basic_lostream const &) = delete;
+  basic_lostream &operator=(basic_lostream &&) = delete;
+
 private:
   largeobject_streambuf<CHAR, TRAITS> m_buf;
 };
 
 using lostream = basic_lostream<char>;
+
+// LCOV_EXCL_STOP
 } // namespace pqxx
+
+// NOLINTEND(
+//    cppcoreguidelines-avoid-const-or-ref-data-members,
+//    fuchsia-multiple-inheritance
+// )
 #endif
